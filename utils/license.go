@@ -16,17 +16,16 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	l4g "github.com/alecthomas/log4go"
 
-	"github.com/mattermost/platform/model"
+	"github.com/mattermost/mattermost-server/model"
 )
 
-var IsLicensed bool = false
-var License *model.License = &model.License{
-	Features: new(model.Features),
-}
-var ClientLicense map[string]string = map[string]string{"IsLicensed": "false"}
+var isLicensedInt32 int32
+var licenseValue atomic.Value
+var clientLicenseValue atomic.Value
 
 var publicKey []byte = []byte(`-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyZmShlU8Z8HdG0IWSZ8r
@@ -37,6 +36,34 @@ HrKmR/4Yi71EqAvkhk7ZjQFuF0osSWJMEEGGCSUYQnTEqUzcZSh1BhVpkIkeu8Kk
 a0v85XL6i9ote2P+fLZ3wX9EoioHzgdgB7arOxY50QRJO7OyCqpKFKv6lRWTXuSt
 hwIDAQAB
 -----END PUBLIC KEY-----`)
+
+func init() {
+	SetLicense(nil)
+}
+
+func IsLicensed() bool {
+	return atomic.LoadInt32(&isLicensedInt32) == 1
+}
+
+func SetIsLicensed(v bool) {
+	if v {
+		atomic.StoreInt32(&isLicensedInt32, 1)
+	} else {
+		atomic.StoreInt32(&isLicensedInt32, 0)
+	}
+}
+
+func License() *model.License {
+	return licenseValue.Load().(*model.License)
+}
+
+func SetClientLicense(m map[string]string) {
+	clientLicenseValue.Store(m)
+}
+
+func ClientLicense() map[string]string {
+	return clientLicenseValue.Load().(map[string]string)
+}
 
 func LoadLicense(licenseBytes []byte) {
 	if success, licenseStr := ValidateLicense(licenseBytes); success {
@@ -49,23 +76,35 @@ func LoadLicense(licenseBytes []byte) {
 }
 
 func SetLicense(license *model.License) bool {
-	license.Features.SetDefaults()
 
-	if !license.IsExpired() {
-		License = license
-		IsLicensed = true
-		ClientLicense = getClientLicense(license)
-		ClientCfg = getClientConfig(Cfg)
-		return true
+	if license == nil {
+		SetIsLicensed(false)
+		license = &model.License{
+			Features: new(model.Features),
+		}
+		license.Features.SetDefaults()
+		licenseValue.Store(license)
+
+		SetClientLicense(map[string]string{"IsLicensed": "false"})
+
+		return false
+	} else {
+		license.Features.SetDefaults()
+
+		if !license.IsExpired() {
+			licenseValue.Store(license)
+			SetIsLicensed(true)
+			clientLicenseValue.Store(getClientLicense(license))
+			ClientCfg = getClientConfig(Cfg)
+			return true
+		}
+
+		return false
 	}
-
-	return false
 }
 
 func RemoveLicense() {
-	License = &model.License{}
-	IsLicensed = false
-	ClientLicense = getClientLicense(License)
+	SetLicense(nil)
 	ClientCfg = getClientConfig(Cfg)
 }
 
@@ -162,9 +201,9 @@ func GetLicenseFileLocation(fileLocation string) string {
 func getClientLicense(l *model.License) map[string]string {
 	props := make(map[string]string)
 
-	props["IsLicensed"] = strconv.FormatBool(IsLicensed)
+	props["IsLicensed"] = strconv.FormatBool(IsLicensed())
 
-	if IsLicensed {
+	if IsLicensed() {
 		props["Id"] = l.Id
 		props["Users"] = strconv.Itoa(*l.Features.Users)
 		props["LDAP"] = strconv.FormatBool(*l.Features.LDAP)
@@ -179,6 +218,8 @@ func getClientLicense(l *model.License) map[string]string {
 		props["MHPNS"] = strconv.FormatBool(*l.Features.MHPNS)
 		props["PasswordRequirements"] = strconv.FormatBool(*l.Features.PasswordRequirements)
 		props["Announcement"] = strconv.FormatBool(*l.Features.Announcement)
+		props["Elasticsearch"] = strconv.FormatBool(*l.Features.Elasticsearch)
+		props["DataRetention"] = strconv.FormatBool(*l.Features.DataRetention)
 		props["IssuedAt"] = strconv.FormatInt(l.IssuedAt, 10)
 		props["StartsAt"] = strconv.FormatInt(l.StartsAt, 10)
 		props["ExpiresAt"] = strconv.FormatInt(l.ExpiresAt, 10)
@@ -186,6 +227,8 @@ func getClientLicense(l *model.License) map[string]string {
 		props["Email"] = l.Customer.Email
 		props["Company"] = l.Customer.Company
 		props["PhoneNumber"] = l.Customer.PhoneNumber
+		props["EmailNotificationContents"] = strconv.FormatBool(*l.Features.EmailNotificationContents)
+		props["MessageExport"] = strconv.FormatBool(*l.Features.MessageExport)
 	}
 
 	return props
@@ -194,7 +237,7 @@ func getClientLicense(l *model.License) map[string]string {
 func GetClientLicenseEtag(useSanitized bool) string {
 	value := ""
 
-	lic := ClientLicense
+	lic := ClientLicense()
 
 	if useSanitized {
 		lic = GetSanitizedClientLicense()
@@ -210,11 +253,11 @@ func GetClientLicenseEtag(useSanitized bool) string {
 func GetSanitizedClientLicense() map[string]string {
 	sanitizedLicense := make(map[string]string)
 
-	for k, v := range ClientLicense {
+	for k, v := range ClientLicense() {
 		sanitizedLicense[k] = v
 	}
 
-	if IsLicensed {
+	if IsLicensed() {
 		delete(sanitizedLicense, "Id")
 		delete(sanitizedLicense, "Name")
 		delete(sanitizedLicense, "Email")

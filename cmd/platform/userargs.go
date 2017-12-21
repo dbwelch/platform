@@ -3,33 +3,33 @@
 package main
 
 import (
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/model"
+	"github.com/mattermost/mattermost-server/app"
+	"github.com/mattermost/mattermost-server/model"
 )
 
-func getUsersFromUserArgs(userArgs []string) []*model.User {
+func getUsersFromUserArgs(a *app.App, userArgs []string) []*model.User {
 	users := make([]*model.User, 0, len(userArgs))
 	for _, userArg := range userArgs {
-		user := getUserFromUserArg(userArg)
+		user := getUserFromUserArg(a, userArg)
 		users = append(users, user)
 	}
 	return users
 }
 
-func getUserFromUserArg(userArg string) *model.User {
+func getUserFromUserArg(a *app.App, userArg string) *model.User {
 	var user *model.User
-	if result := <-app.Srv.Store.User().GetByEmail(userArg); result.Err == nil {
+	if result := <-a.Srv.Store.User().GetByEmail(userArg); result.Err == nil {
 		user = result.Data.(*model.User)
 	}
 
 	if user == nil {
-		if result := <-app.Srv.Store.User().GetByUsername(userArg); result.Err == nil {
+		if result := <-a.Srv.Store.User().GetByUsername(userArg); result.Err == nil {
 			user = result.Data.(*model.User)
 		}
 	}
 
 	if user == nil {
-		if result := <-app.Srv.Store.User().Get(userArg); result.Err == nil {
+		if result := <-a.Srv.Store.User().Get(userArg); result.Err == nil {
 			user = result.Data.(*model.User)
 		}
 	}

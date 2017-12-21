@@ -15,23 +15,31 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/store"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/app"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/store"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
 func TestCreatePost(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
+
 	Client := th.BasicClient
 	team := th.BasicTeam
 	team2 := th.CreateTeam(th.BasicClient)
 	user3 := th.CreateUser(th.BasicClient)
-	LinkUserToTeam(user3, team2)
+	th.LinkUserToTeam(user3, team2)
 	channel1 := th.BasicChannel
 	channel2 := th.CreateChannel(Client, team)
 
-	post1 := &model.Post{ChannelId: channel1.Id, Message: "#hashtag a" + model.NewId() + "a"}
+	th.InitSystemAdmin()
+	AdminClient := th.SystemAdminClient
+	adminTeam := th.SystemAdminTeam
+	adminUser := th.CreateUser(th.SystemAdminClient)
+	th.LinkUserToTeam(adminUser, adminTeam)
+
+	post1 := &model.Post{ChannelId: channel1.Id, Message: "#hashtag a" + model.NewId() + "a", Props: model.StringInterface{model.PROPS_ADD_CHANNEL_MEMBER: "no good"}}
 	rpost1, err := Client.CreatePost(post1)
 	if err != nil {
 		t.Fatal(err)
@@ -51,6 +59,15 @@ func TestCreatePost(t *testing.T) {
 
 	if rpost1.Data.(*model.Post).EditAt != 0 {
 		t.Fatal("Newly craeted post shouldn't have EditAt set")
+	}
+
+	if rpost1.Data.(*model.Post).Props[model.PROPS_ADD_CHANNEL_MEMBER] != nil {
+		t.Fatal("newly created post shouldn't have Props['add_channel_member'] set")
+	}
+
+	_, err = Client.CreatePost(&model.Post{ChannelId: channel1.Id, Message: "#hashtag a" + model.NewId() + "a", Type: model.POST_SYSTEM_GENERIC})
+	if err == nil {
+		t.Fatal("should have failed - bad post type")
 	}
 
 	post2 := &model.Post{ChannelId: channel1.Id, Message: "zz" + model.NewId() + "a", RootId: rpost1.Data.(*model.Post).Id}
@@ -136,11 +153,44 @@ func TestCreatePost(t *testing.T) {
 	} else if rpost9 := resp.Data.(*model.Post); len(rpost9.FileIds) != 3 {
 		t.Fatal("post should have 3 files")
 	} else {
-		infos := store.Must(app.Srv.Store.FileInfo().GetForPost(rpost9.Id, true, true)).([]*model.FileInfo)
+		infos := store.Must(th.App.Srv.Store.FileInfo().GetForPost(rpost9.Id, true, true)).([]*model.FileInfo)
 
 		if len(infos) != 3 {
 			t.Fatal("should've attached all 3 files to post")
 		}
+	}
+
+	isLicensed := utils.IsLicensed()
+	license := utils.License()
+	disableTownSquareReadOnly := th.App.Config().TeamSettings.ExperimentalTownSquareIsReadOnly
+	defer func() {
+		th.App.UpdateConfig(func(cfg *model.Config) { cfg.TeamSettings.ExperimentalTownSquareIsReadOnly = disableTownSquareReadOnly })
+		utils.SetIsLicensed(isLicensed)
+		utils.SetLicense(license)
+		th.App.SetDefaultRolesBasedOnConfig()
+	}()
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.TeamSettings.ExperimentalTownSquareIsReadOnly = true })
+	th.App.SetDefaultRolesBasedOnConfig()
+	utils.SetIsLicensed(true)
+	utils.SetLicense(&model.License{Features: &model.Features{}})
+	utils.License().Features.SetDefaults()
+
+	defaultChannel := store.Must(th.App.Srv.Store.Channel().GetByName(team.Id, model.DEFAULT_CHANNEL, true)).(*model.Channel)
+	defaultPost := &model.Post{
+		ChannelId: defaultChannel.Id,
+		Message:   "Default Channel Post",
+	}
+	if _, err = Client.CreatePost(defaultPost); err == nil {
+		t.Fatal("should have failed -- ExperimentalTownSquareIsReadOnly is true and it's a read only channel")
+	}
+
+	adminDefaultChannel := store.Must(th.App.Srv.Store.Channel().GetByName(adminTeam.Id, model.DEFAULT_CHANNEL, true)).(*model.Channel)
+	adminDefaultPost := &model.Post{
+		ChannelId: adminDefaultChannel.Id,
+		Message:   "Admin Default Channel Post",
+	}
+	if _, err = AdminClient.CreatePost(adminDefaultPost); err != nil {
+		t.Fatal("should not have failed -- ExperimentalTownSquareIsReadOnly is true and admin can post to channel")
 	}
 }
 
@@ -149,6 +199,8 @@ func TestCreatePostWithCreateAt(t *testing.T) {
 	// An ordinary user cannot use CreateAt
 
 	th := Setup().InitBasic()
+	defer th.TearDown()
+
 	Client := th.BasicClient
 	channel1 := th.BasicChannel
 
@@ -165,8 +217,8 @@ func TestCreatePostWithCreateAt(t *testing.T) {
 
 	// But a System Admin user can
 
-	th2 := Setup().InitSystemAdmin()
-	SysClient := th2.SystemAdminClient
+	th.InitSystemAdmin()
+	SysClient := th.SystemAdminClient
 
 	if resp, err := SysClient.CreatePost(post); err != nil {
 		t.Fatal(err)
@@ -182,16 +234,17 @@ func testCreatePostWithOutgoingHook(
 	triggerWhen int,
 ) {
 	th := Setup().InitSystemAdmin()
+	defer th.TearDown()
+
 	Client := th.SystemAdminClient
 	team := th.SystemAdminTeam
 	user := th.SystemAdminUser
 	channel := th.CreateChannel(Client, team)
 
-	enableOutgoingHooks := utils.Cfg.ServiceSettings.EnableOutgoingWebhooks
-	defer func() {
-		utils.Cfg.ServiceSettings.EnableOutgoingWebhooks = enableOutgoingHooks
-	}()
-	utils.Cfg.ServiceSettings.EnableOutgoingWebhooks = true
+	th.App.UpdateConfig(func(cfg *model.Config) {
+		cfg.ServiceSettings.EnableOutgoingWebhooks = true
+		*cfg.ServiceSettings.AllowedUntrustedInternalConnections = "localhost 127.0.0.1"
+	})
 
 	var hook *model.OutgoingWebhook
 	var post *model.Post
@@ -252,6 +305,15 @@ func testCreatePostWithOutgoingHook(
 				return
 			}
 		}
+
+		resp := &model.OutgoingWebhookResponse{}
+		resp.Text = model.NewString("some test text")
+		resp.Username = "testusername"
+		resp.IconURL = "http://www.mattermost.org/wp-content/uploads/2016/04/icon.png"
+		resp.Props = map[string]interface{}{"someprop": "somevalue"}
+		resp.Type = "custom_test"
+
+		w.Write([]byte(resp.ToJson()))
 
 		success <- true
 	}))
@@ -330,17 +392,12 @@ func TestCreatePostWithOutgoingHook_no_content_type(t *testing.T) {
 
 func TestUpdatePost(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
+
 	Client := th.BasicClient
 	channel1 := th.BasicChannel
 
-	allowEditPost := *utils.Cfg.ServiceSettings.AllowEditPost
-	postEditTimeLimit := *utils.Cfg.ServiceSettings.PostEditTimeLimit
-	defer func() {
-		*utils.Cfg.ServiceSettings.AllowEditPost = allowEditPost
-		*utils.Cfg.ServiceSettings.PostEditTimeLimit = postEditTimeLimit
-	}()
-
-	*utils.Cfg.ServiceSettings.AllowEditPost = model.ALLOW_EDIT_POST_ALWAYS
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.AllowEditPost = model.ALLOW_EDIT_POST_ALWAYS })
 
 	post1 := &model.Post{ChannelId: channel1.Id, Message: "zz" + model.NewId() + "a"}
 	rpost1, err := Client.CreatePost(post1)
@@ -364,6 +421,7 @@ func TestUpdatePost(t *testing.T) {
 
 	msg2 := "zz" + model.NewId() + " update post 1"
 	rpost2.Data.(*model.Post).Message = msg2
+	rpost2.Data.(*model.Post).Props[model.PROPS_ADD_CHANNEL_MEMBER] = "no good"
 	if rupost2, err := Client.UpdatePost(rpost2.Data.(*model.Post)); err != nil {
 		t.Fatal(err)
 	} else {
@@ -372,6 +430,9 @@ func TestUpdatePost(t *testing.T) {
 		}
 		if rupost2.Data.(*model.Post).EditAt == 0 {
 			t.Fatal("EditAt not updated for post")
+		}
+		if rupost2.Data.(*model.Post).Props[model.PROPS_ADD_CHANNEL_MEMBER] != nil {
+			t.Fatal("failed to sanitize Props['add_channel_member'], should be nil")
 		}
 	}
 
@@ -394,29 +455,28 @@ func TestUpdatePost(t *testing.T) {
 		}
 	}
 
-	post3 := &model.Post{ChannelId: channel1.Id, Message: "zz" + model.NewId() + "a", Type: model.POST_JOIN_LEAVE}
-	rpost3, err := Client.CreatePost(post3)
+	rpost3, err := th.App.CreatePost(&model.Post{ChannelId: channel1.Id, Message: "zz" + model.NewId() + "a", Type: model.POST_JOIN_LEAVE, UserId: th.BasicUser.Id}, channel1, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	up3 := &model.Post{Id: rpost3.Data.(*model.Post).Id, ChannelId: channel1.Id, Message: "zz" + model.NewId() + " update post 3"}
+	up3 := &model.Post{Id: rpost3.Id, ChannelId: channel1.Id, Message: "zz" + model.NewId() + " update post 3"}
 	if _, err := Client.UpdatePost(up3); err == nil {
 		t.Fatal("shouldn't have been able to update system message")
 	}
 
 	// Test licensed policy controls for edit post
-	isLicensed := utils.IsLicensed
-	license := utils.License
+	isLicensed := utils.IsLicensed()
+	license := utils.License()
 	defer func() {
-		utils.IsLicensed = isLicensed
-		utils.License = license
+		utils.SetIsLicensed(isLicensed)
+		utils.SetLicense(license)
 	}()
-	utils.IsLicensed = true
-	utils.License = &model.License{Features: &model.Features{}}
-	utils.License.Features.SetDefaults()
+	utils.SetIsLicensed(true)
+	utils.SetLicense(&model.License{Features: &model.Features{}})
+	utils.License().Features.SetDefaults()
 
-	*utils.Cfg.ServiceSettings.AllowEditPost = model.ALLOW_EDIT_POST_NEVER
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.AllowEditPost = model.ALLOW_EDIT_POST_NEVER })
 
 	post4 := &model.Post{ChannelId: channel1.Id, Message: "zz" + model.NewId() + "a", RootId: rpost1.Data.(*model.Post).Id}
 	rpost4, err := Client.CreatePost(post4)
@@ -429,8 +489,8 @@ func TestUpdatePost(t *testing.T) {
 		t.Fatal("shouldn't have been able to update a message when not allowed")
 	}
 
-	*utils.Cfg.ServiceSettings.AllowEditPost = model.ALLOW_EDIT_POST_TIME_LIMIT
-	*utils.Cfg.ServiceSettings.PostEditTimeLimit = 1 //seconds
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.AllowEditPost = model.ALLOW_EDIT_POST_TIME_LIMIT })
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.PostEditTimeLimit = 1 }) //seconds
 
 	post5 := &model.Post{ChannelId: channel1.Id, Message: "zz" + model.NewId() + "a", RootId: rpost1.Data.(*model.Post).Id}
 	rpost5, err := Client.CreatePost(post5)
@@ -458,6 +518,8 @@ func TestUpdatePost(t *testing.T) {
 
 func TestGetPosts(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
+
 	Client := th.BasicClient
 	channel1 := th.BasicChannel
 
@@ -513,6 +575,8 @@ func TestGetPosts(t *testing.T) {
 
 func TestGetPostsSince(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
+
 	Client := th.BasicClient
 	channel1 := th.BasicChannel
 
@@ -573,6 +637,8 @@ func TestGetPostsSince(t *testing.T) {
 
 func TestGetPostsBeforeAfter(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
+
 	Client := th.BasicClient
 	channel1 := th.BasicChannel
 
@@ -610,8 +676,8 @@ func TestGetPostsBeforeAfter(t *testing.T) {
 		t.Fatal("wrong order")
 	}
 
-	if len(r1.Posts) != 3 {
-		t.Log(r1.Posts)
+	// including created post from test helper and system 'joined' message
+	if len(r1.Posts) != 4 {
 		t.Fatal("wrong size")
 	}
 
@@ -641,6 +707,8 @@ func TestGetPostsBeforeAfter(t *testing.T) {
 
 func TestSearchPosts(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
+
 	Client := th.BasicClient
 	channel1 := th.BasicChannel
 
@@ -687,6 +755,8 @@ func TestSearchPosts(t *testing.T) {
 
 func TestSearchHashtagPosts(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
+
 	Client := th.BasicClient
 	channel1 := th.BasicChannel
 
@@ -708,6 +778,8 @@ func TestSearchHashtagPosts(t *testing.T) {
 
 func TestSearchPostsInChannel(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
+
 	Client := th.BasicClient
 	channel1 := th.BasicChannel
 	team := th.BasicTeam
@@ -777,6 +849,8 @@ func TestSearchPostsInChannel(t *testing.T) {
 
 func TestSearchPostsFromUser(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
+
 	Client := th.BasicClient
 	channel1 := th.BasicChannel
 	team := th.BasicTeam
@@ -786,7 +860,7 @@ func TestSearchPostsFromUser(t *testing.T) {
 	Client.Must(Client.AddChannelMember(channel1.Id, th.BasicUser2.Id))
 	Client.Must(Client.AddChannelMember(channel2.Id, th.BasicUser2.Id))
 	user3 := th.CreateUser(Client)
-	LinkUserToTeam(user3, team)
+	th.LinkUserToTeam(user3, team)
 	Client.Must(Client.AddChannelMember(channel1.Id, user3.Id))
 	Client.Must(Client.AddChannelMember(channel2.Id, user3.Id))
 
@@ -844,6 +918,8 @@ func TestSearchPostsFromUser(t *testing.T) {
 
 func TestGetPostsCache(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
+
 	Client := th.BasicClient
 	channel1 := th.BasicChannel
 
@@ -883,17 +959,14 @@ func TestGetPostsCache(t *testing.T) {
 
 func TestDeletePosts(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
+	defer th.TearDown()
+
 	Client := th.BasicClient
 	channel1 := th.BasicChannel
 	team1 := th.BasicTeam
 
-	restrictPostDelete := *utils.Cfg.ServiceSettings.RestrictPostDelete
-	defer func() {
-		*utils.Cfg.ServiceSettings.RestrictPostDelete = restrictPostDelete
-		utils.SetDefaultRolesBasedOnConfig()
-	}()
-	*utils.Cfg.ServiceSettings.RestrictPostDelete = model.PERMISSIONS_DELETE_POST_ALL
-	utils.SetDefaultRolesBasedOnConfig()
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.RestrictPostDelete = model.PERMISSIONS_DELETE_POST_ALL })
+	th.App.SetDefaultRolesBasedOnConfig()
 
 	time.Sleep(10 * time.Millisecond)
 	post1 := &model.Post{ChannelId: channel1.Id, Message: "zz" + model.NewId() + "a"}
@@ -924,8 +997,8 @@ func TestDeletePosts(t *testing.T) {
 
 	r2 := Client.Must(Client.GetPosts(channel1.Id, 0, 10, "")).Data.(*model.PostList)
 
-	if len(r2.Posts) != 5 {
-		t.Fatal("should have returned 5 items")
+	if post := r2.Posts[post3.Id]; post != nil {
+		t.Fatal("should have not returned deleted post")
 	}
 
 	time.Sleep(10 * time.Millisecond)
@@ -937,7 +1010,7 @@ func TestDeletePosts(t *testing.T) {
 	post4b = Client.Must(Client.CreatePost(post4b)).Data.(*model.Post)
 
 	SystemAdminClient := th.SystemAdminClient
-	LinkUserToTeam(th.SystemAdminUser, th.BasicTeam)
+	th.LinkUserToTeam(th.SystemAdminUser, th.BasicTeam)
 	SystemAdminClient.Must(SystemAdminClient.JoinChannel(channel1.Id))
 
 	th.LoginBasic2()
@@ -948,17 +1021,17 @@ func TestDeletePosts(t *testing.T) {
 	}
 
 	// Test licensed policy controls for delete post
-	isLicensed := utils.IsLicensed
-	license := utils.License
+	isLicensed := utils.IsLicensed()
+	license := utils.License()
 	defer func() {
-		utils.IsLicensed = isLicensed
-		utils.License = license
+		utils.SetIsLicensed(isLicensed)
+		utils.SetLicense(license)
 	}()
-	utils.IsLicensed = true
-	utils.License = &model.License{Features: &model.Features{}}
-	utils.License.Features.SetDefaults()
+	utils.SetIsLicensed(true)
+	utils.SetLicense(&model.License{Features: &model.Features{}})
+	utils.License().Features.SetDefaults()
 
-	UpdateUserToTeamAdmin(th.BasicUser2, th.BasicTeam)
+	th.UpdateUserToTeamAdmin(th.BasicUser2, th.BasicTeam)
 
 	Client.Logout()
 	th.LoginBasic2()
@@ -968,8 +1041,10 @@ func TestDeletePosts(t *testing.T) {
 
 	SystemAdminClient.Must(SystemAdminClient.DeletePost(channel1.Id, post4b.Id))
 
-	*utils.Cfg.ServiceSettings.RestrictPostDelete = model.PERMISSIONS_DELETE_POST_TEAM_ADMIN
-	utils.SetDefaultRolesBasedOnConfig()
+	th.App.UpdateConfig(func(cfg *model.Config) {
+		*cfg.ServiceSettings.RestrictPostDelete = model.PERMISSIONS_DELETE_POST_TEAM_ADMIN
+	})
+	th.App.SetDefaultRolesBasedOnConfig()
 
 	th.LoginBasic()
 
@@ -991,8 +1066,10 @@ func TestDeletePosts(t *testing.T) {
 
 	SystemAdminClient.Must(SystemAdminClient.DeletePost(channel1.Id, post5b.Id))
 
-	*utils.Cfg.ServiceSettings.RestrictPostDelete = model.PERMISSIONS_DELETE_POST_SYSTEM_ADMIN
-	utils.SetDefaultRolesBasedOnConfig()
+	th.App.UpdateConfig(func(cfg *model.Config) {
+		*cfg.ServiceSettings.RestrictPostDelete = model.PERMISSIONS_DELETE_POST_SYSTEM_ADMIN
+	})
+	th.App.SetDefaultRolesBasedOnConfig()
 
 	th.LoginBasic()
 
@@ -1011,9 +1088,9 @@ func TestDeletePosts(t *testing.T) {
 	}
 
 	// Check that if unlicensed the policy restriction is not enforced.
-	utils.IsLicensed = false
-	utils.License = nil
-	utils.SetDefaultRolesBasedOnConfig()
+	utils.SetIsLicensed(false)
+	utils.SetLicense(nil)
+	th.App.SetDefaultRolesBasedOnConfig()
 
 	time.Sleep(10 * time.Millisecond)
 	post7 := &model.Post{ChannelId: channel1.Id, Message: "zz" + model.NewId() + "a"}
@@ -1029,6 +1106,8 @@ func TestDeletePosts(t *testing.T) {
 
 func TestEmailMention(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
+
 	Client := th.BasicClient
 	channel1 := th.BasicChannel
 	Client.Must(Client.AddChannelMember(channel1.Id, th.BasicUser2.Id))
@@ -1043,7 +1122,7 @@ func TestEmailMention(t *testing.T) {
 	data["comments"] = "any"
 	Client.Must(Client.UpdateUserNotify(data))
 
-	store.Must(app.Srv.Store.Preference().Save(&model.Preferences{{
+	store.Must(th.App.Srv.Store.Preference().Save(&model.Preferences{{
 		UserId:   th.BasicUser2.Id,
 		Category: model.PREFERENCE_CATEGORY_NOTIFICATIONS,
 		Name:     model.PREFERENCE_NAME_EMAIL_INTERVAL,
@@ -1073,24 +1152,37 @@ func TestEmailMention(t *testing.T) {
 		if !strings.ContainsAny(resultsMailbox[len(resultsMailbox)-1].To[0], th.BasicUser2.Email) {
 			t.Fatal("Wrong To recipient")
 		} else {
-			for i := 0; i < 5; i++ {
-				if resultsEmail, err := utils.GetMessageFromMailbox(th.BasicUser2.Email, resultsMailbox[len(resultsMailbox)-1].ID); err == nil {
-					if strings.Contains(resultsEmail.Body.Text, post1.Message) {
-						break
-					} else if i == 4 {
-						t.Log(resultsEmail.Body.Text)
-						t.Fatal("Received wrong Message")
+			for i := 0; i < 30; i++ {
+				for j := len(resultsMailbox) - 1; j >= 0; j-- {
+					isUser := false
+					for _, to := range resultsMailbox[j].To {
+						if to == "<"+th.BasicUser2.Email+">" {
+							isUser = true
+						}
 					}
-					time.Sleep(100 * time.Millisecond)
+					if !isUser {
+						continue
+					}
+					if resultsEmail, err := utils.GetMessageFromMailbox(th.BasicUser2.Email, resultsMailbox[j].ID); err == nil {
+						if strings.Contains(resultsEmail.Body.Text, post1.Message) {
+							return
+						} else if i == 4 {
+							t.Log(resultsEmail.Body.Text)
+							t.Fatal("Received wrong Message")
+						}
+					}
 				}
+				time.Sleep(100 * time.Millisecond)
 			}
+			t.Fatal("Didn't receive message")
 		}
 	}
-
 }
 
 func TestFuzzyPosts(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
+
 	Client := th.BasicClient
 	channel1 := th.BasicChannel
 
@@ -1106,6 +1198,8 @@ func TestFuzzyPosts(t *testing.T) {
 
 func TestGetFlaggedPosts(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
+
 	Client := th.BasicClient
 	user1 := th.BasicUser
 	post1 := th.BasicPost
@@ -1145,30 +1239,31 @@ func TestGetFlaggedPosts(t *testing.T) {
 }
 
 func TestGetMessageForNotification(t *testing.T) {
-	Setup().InitBasic()
+	th := Setup().InitBasic()
+	defer th.TearDown()
 
-	testPng := store.Must(app.Srv.Store.FileInfo().Save(&model.FileInfo{
+	testPng := store.Must(th.App.Srv.Store.FileInfo().Save(&model.FileInfo{
 		CreatorId: model.NewId(),
 		Path:      "test1.png",
 		Name:      "test1.png",
 		MimeType:  "image/png",
 	})).(*model.FileInfo)
 
-	testJpg1 := store.Must(app.Srv.Store.FileInfo().Save(&model.FileInfo{
+	testJpg1 := store.Must(th.App.Srv.Store.FileInfo().Save(&model.FileInfo{
 		CreatorId: model.NewId(),
 		Path:      "test2.jpg",
 		Name:      "test2.jpg",
 		MimeType:  "image/jpeg",
 	})).(*model.FileInfo)
 
-	testFile := store.Must(app.Srv.Store.FileInfo().Save(&model.FileInfo{
+	testFile := store.Must(th.App.Srv.Store.FileInfo().Save(&model.FileInfo{
 		CreatorId: model.NewId(),
 		Path:      "test1.go",
 		Name:      "test1.go",
 		MimeType:  "text/plain",
 	})).(*model.FileInfo)
 
-	testJpg2 := store.Must(app.Srv.Store.FileInfo().Save(&model.FileInfo{
+	testJpg2 := store.Must(th.App.Srv.Store.FileInfo().Save(&model.FileInfo{
 		CreatorId: model.NewId(),
 		Path:      "test3.jpg",
 		Name:      "test3.jpg",
@@ -1182,49 +1277,51 @@ func TestGetMessageForNotification(t *testing.T) {
 		Message: "test",
 	}
 
-	if app.GetMessageForNotification(post, translateFunc) != "test" {
+	if th.App.GetMessageForNotification(post, translateFunc) != "test" {
 		t.Fatal("should've returned message text")
 	}
 
 	post.FileIds = model.StringArray{testPng.Id}
-	store.Must(app.Srv.Store.FileInfo().AttachToPost(testPng.Id, post.Id))
-	if app.GetMessageForNotification(post, translateFunc) != "test" {
+	store.Must(th.App.Srv.Store.FileInfo().AttachToPost(testPng.Id, post.Id))
+	if th.App.GetMessageForNotification(post, translateFunc) != "test" {
 		t.Fatal("should've returned message text, even with attachments")
 	}
 
 	post.Message = ""
-	if message := app.GetMessageForNotification(post, translateFunc); message != "1 image sent: test1.png" {
+	if message := th.App.GetMessageForNotification(post, translateFunc); message != "1 image sent: test1.png" {
 		t.Fatal("should've returned number of images:", message)
 	}
 
 	post.FileIds = model.StringArray{testPng.Id, testJpg1.Id}
-	store.Must(app.Srv.Store.FileInfo().AttachToPost(testJpg1.Id, post.Id))
-	app.Srv.Store.FileInfo().InvalidateFileInfosForPostCache(post.Id)
-	if message := app.GetMessageForNotification(post, translateFunc); message != "2 images sent: test1.png, test2.jpg" && message != "2 images sent: test2.jpg, test1.png" {
+	store.Must(th.App.Srv.Store.FileInfo().AttachToPost(testJpg1.Id, post.Id))
+	th.App.Srv.Store.FileInfo().InvalidateFileInfosForPostCache(post.Id)
+	if message := th.App.GetMessageForNotification(post, translateFunc); message != "2 images sent: test1.png, test2.jpg" && message != "2 images sent: test2.jpg, test1.png" {
 		t.Fatal("should've returned number of images:", message)
 	}
 
 	post.Id = model.NewId()
 	post.FileIds = model.StringArray{testFile.Id}
-	store.Must(app.Srv.Store.FileInfo().AttachToPost(testFile.Id, post.Id))
-	if message := app.GetMessageForNotification(post, translateFunc); message != "1 file sent: test1.go" {
+	store.Must(th.App.Srv.Store.FileInfo().AttachToPost(testFile.Id, post.Id))
+	if message := th.App.GetMessageForNotification(post, translateFunc); message != "1 file sent: test1.go" {
 		t.Fatal("should've returned number of files:", message)
 	}
 
-	store.Must(app.Srv.Store.FileInfo().AttachToPost(testJpg2.Id, post.Id))
-	app.Srv.Store.FileInfo().InvalidateFileInfosForPostCache(post.Id)
+	store.Must(th.App.Srv.Store.FileInfo().AttachToPost(testJpg2.Id, post.Id))
+	th.App.Srv.Store.FileInfo().InvalidateFileInfosForPostCache(post.Id)
 	post.FileIds = model.StringArray{testFile.Id, testJpg2.Id}
-	if message := app.GetMessageForNotification(post, translateFunc); message != "2 files sent: test1.go, test3.jpg" && message != "2 files sent: test3.jpg, test1.go" {
+	if message := th.App.GetMessageForNotification(post, translateFunc); message != "2 files sent: test1.go, test3.jpg" && message != "2 files sent: test3.jpg, test1.go" {
 		t.Fatal("should've returned number of mixed files:", message)
 	}
 }
 
 func TestGetFileInfosForPost(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
+
 	Client := th.BasicClient
 	channel1 := th.BasicChannel
 
-	fileIds := make([]string, 3, 3)
+	fileIds := make([]string, 3)
 	if data, err := readTestFile("test.png"); err != nil {
 		t.Fatal(err)
 	} else {
@@ -1259,6 +1356,8 @@ func TestGetFileInfosForPost(t *testing.T) {
 
 func TestGetPostById(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
+
 	Client := th.BasicClient
 	channel1 := th.BasicChannel
 
@@ -1289,6 +1388,8 @@ func TestGetPostById(t *testing.T) {
 
 func TestGetPermalinkTmp(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
+	defer th.TearDown()
+
 	Client := th.BasicClient
 	channel1 := th.BasicChannel
 	team := th.BasicTeam
@@ -1356,13 +1457,14 @@ func TestGetPermalinkTmp(t *testing.T) {
 
 func TestGetOpenGraphMetadata(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
+
 	Client := th.BasicClient
 
-	enableLinkPreviews := *utils.Cfg.ServiceSettings.EnableLinkPreviews
-	defer func() {
-		*utils.Cfg.ServiceSettings.EnableLinkPreviews = enableLinkPreviews
-	}()
-	*utils.Cfg.ServiceSettings.EnableLinkPreviews = true
+	th.App.UpdateConfig(func(cfg *model.Config) {
+		*cfg.ServiceSettings.EnableLinkPreviews = true
+		*cfg.ServiceSettings.AllowedUntrustedInternalConnections = "localhost 127.0.0.1"
+	})
 
 	ogDataCacheMissCount := 0
 
@@ -1413,7 +1515,7 @@ func TestGetOpenGraphMetadata(t *testing.T) {
 		}
 	}
 
-	*utils.Cfg.ServiceSettings.EnableLinkPreviews = false
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableLinkPreviews = false })
 	if _, err := Client.DoApiPost("/get_opengraph_metadata", "{\"url\":\"/og-data/\"}"); err == nil || err.StatusCode != http.StatusNotImplemented {
 		t.Fatal("should have failed with 501 - disabled link previews")
 	}
@@ -1421,13 +1523,15 @@ func TestGetOpenGraphMetadata(t *testing.T) {
 
 func TestPinPost(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
+
 	Client := th.BasicClient
 
 	post := th.BasicPost
 	if rupost1, err := Client.PinPost(post.ChannelId, post.Id); err != nil {
 		t.Fatal(err)
 	} else {
-		if rupost1.Data.(*model.Post).IsPinned != true {
+		if !rupost1.Data.(*model.Post).IsPinned {
 			t.Fatal("failed to pin post")
 		}
 	}
@@ -1436,7 +1540,7 @@ func TestPinPost(t *testing.T) {
 	if rupost2, err := Client.PinPost(pinnedPost.ChannelId, pinnedPost.Id); err != nil {
 		t.Fatal(err)
 	} else {
-		if rupost2.Data.(*model.Post).IsPinned != true {
+		if !rupost2.Data.(*model.Post).IsPinned {
 			t.Fatal("pinning a post should be idempotent")
 		}
 	}
@@ -1444,13 +1548,15 @@ func TestPinPost(t *testing.T) {
 
 func TestUnpinPost(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
+
 	Client := th.BasicClient
 
 	pinnedPost := th.PinnedPost
 	if rupost1, err := Client.UnpinPost(pinnedPost.ChannelId, pinnedPost.Id); err != nil {
 		t.Fatal(err)
 	} else {
-		if rupost1.Data.(*model.Post).IsPinned != false {
+		if rupost1.Data.(*model.Post).IsPinned {
 			t.Fatal("failed to unpin post")
 		}
 	}
@@ -1459,7 +1565,7 @@ func TestUnpinPost(t *testing.T) {
 	if rupost2, err := Client.UnpinPost(post.ChannelId, post.Id); err != nil {
 		t.Fatal(err)
 	} else {
-		if rupost2.Data.(*model.Post).IsPinned != false {
+		if rupost2.Data.(*model.Post).IsPinned {
 			t.Fatal("unpinning a post should be idempotent")
 		}
 	}

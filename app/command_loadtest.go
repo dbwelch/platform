@@ -11,8 +11,8 @@ import (
 	"strings"
 
 	l4g "github.com/alecthomas/log4go"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 	goi18n "github.com/nicksnyder/go-i18n/i18n"
 )
 
@@ -66,16 +66,17 @@ type LoadTestProvider struct {
 }
 
 func init() {
-	if !utils.Cfg.ServiceSettings.EnableTesting {
-		RegisterCommandProvider(&LoadTestProvider{})
-	}
+	RegisterCommandProvider(&LoadTestProvider{})
 }
 
 func (me *LoadTestProvider) GetTrigger() string {
 	return CMD_TEST
 }
 
-func (me *LoadTestProvider) GetCommand(T goi18n.TranslateFunc) *model.Command {
+func (me *LoadTestProvider) GetCommand(a *App, T goi18n.TranslateFunc) *model.Command {
+	if !a.Config().ServiceSettings.EnableTesting {
+		return nil
+	}
 	return &model.Command{
 		Trigger:          CMD_TEST,
 		AutoComplete:     false,
@@ -85,33 +86,33 @@ func (me *LoadTestProvider) GetCommand(T goi18n.TranslateFunc) *model.Command {
 	}
 }
 
-func (me *LoadTestProvider) DoCommand(args *model.CommandArgs, message string) *model.CommandResponse {
+func (me *LoadTestProvider) DoCommand(a *App, args *model.CommandArgs, message string) *model.CommandResponse {
 	//This command is only available when EnableTesting is true
-	if !utils.Cfg.ServiceSettings.EnableTesting {
+	if !a.Config().ServiceSettings.EnableTesting {
 		return &model.CommandResponse{}
 	}
 
 	if strings.HasPrefix(message, "setup") {
-		return me.SetupCommand(args, message)
+		return me.SetupCommand(a, args, message)
 	}
 
 	if strings.HasPrefix(message, "users") {
-		return me.UsersCommand(args, message)
+		return me.UsersCommand(a, args, message)
 	}
 
 	if strings.HasPrefix(message, "channels") {
-		return me.ChannelsCommand(args, message)
+		return me.ChannelsCommand(a, args, message)
 	}
 
 	if strings.HasPrefix(message, "posts") {
-		return me.PostsCommand(args, message)
+		return me.PostsCommand(a, args, message)
 	}
 
 	if strings.HasPrefix(message, "url") {
-		return me.UrlCommand(args, message)
+		return me.UrlCommand(a, args, message)
 	}
 	if strings.HasPrefix(message, "json") {
-		return me.JsonCommand(args, message)
+		return me.JsonCommand(a, args, message)
 	}
 	return me.HelpCommand(args, message)
 }
@@ -120,7 +121,7 @@ func (me *LoadTestProvider) HelpCommand(args *model.CommandArgs, message string)
 	return &model.CommandResponse{Text: usage, ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
 }
 
-func (me *LoadTestProvider) SetupCommand(args *model.CommandArgs, message string) *model.CommandResponse {
+func (me *LoadTestProvider) SetupCommand(a *App, args *model.CommandArgs, message string) *model.CommandResponse {
 	tokens := strings.Fields(strings.TrimPrefix(message, "setup"))
 	doTeams := contains(tokens, "teams")
 	doFuzz := contains(tokens, "fuzz")
@@ -161,18 +162,19 @@ func (me *LoadTestProvider) SetupCommand(args *model.CommandArgs, message string
 	client := model.NewClient(args.SiteURL)
 
 	if doTeams {
-		if err := CreateBasicUser(client); err != nil {
+		if err := a.CreateBasicUser(client); err != nil {
 			return &model.CommandResponse{Text: "Failed to create testing environment", ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
 		}
 		client.Login(BTEST_USER_EMAIL, BTEST_USER_PASSWORD)
 		environment, err := CreateTestEnvironmentWithTeams(
+			a,
 			client,
 			utils.Range{Begin: numTeams, End: numTeams},
 			utils.Range{Begin: numChannels, End: numChannels},
 			utils.Range{Begin: numUsers, End: numUsers},
 			utils.Range{Begin: numPosts, End: numPosts},
 			doFuzz)
-		if err != true {
+		if !err {
 			return &model.CommandResponse{Text: "Failed to create testing environment", ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
 		} else {
 			l4g.Info("Testing environment created")
@@ -184,7 +186,7 @@ func (me *LoadTestProvider) SetupCommand(args *model.CommandArgs, message string
 	} else {
 
 		var team *model.Team
-		if tr := <-Srv.Store.Team().Get(args.TeamId); tr.Err != nil {
+		if tr := <-a.Srv.Store.Team().Get(args.TeamId); tr.Err != nil {
 			return &model.CommandResponse{Text: "Failed to create testing environment", ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
 		} else {
 			team = tr.Data.(*model.Team)
@@ -193,6 +195,7 @@ func (me *LoadTestProvider) SetupCommand(args *model.CommandArgs, message string
 		client.MockSession(args.Session.Token)
 		client.SetTeamId(args.TeamId)
 		CreateTestEnvironmentInTeam(
+			a,
 			client,
 			team,
 			utils.Range{Begin: numChannels, End: numChannels},
@@ -204,7 +207,7 @@ func (me *LoadTestProvider) SetupCommand(args *model.CommandArgs, message string
 	return &model.CommandResponse{Text: "Created enviroment", ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
 }
 
-func (me *LoadTestProvider) UsersCommand(args *model.CommandArgs, message string) *model.CommandResponse {
+func (me *LoadTestProvider) UsersCommand(a *App, args *model.CommandArgs, message string) *model.CommandResponse {
 	cmd := strings.TrimSpace(strings.TrimPrefix(message, "users"))
 
 	doFuzz := false
@@ -214,12 +217,12 @@ func (me *LoadTestProvider) UsersCommand(args *model.CommandArgs, message string
 	}
 
 	usersr, err := parseRange(cmd, "")
-	if err == false {
+	if !err {
 		usersr = utils.Range{Begin: 2, End: 5}
 	}
 
 	var team *model.Team
-	if tr := <-Srv.Store.Team().Get(args.TeamId); tr.Err != nil {
+	if tr := <-a.Srv.Store.Team().Get(args.TeamId); tr.Err != nil {
 		return &model.CommandResponse{Text: "Failed to create testing environment", ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
 	} else {
 		team = tr.Data.(*model.Team)
@@ -227,14 +230,14 @@ func (me *LoadTestProvider) UsersCommand(args *model.CommandArgs, message string
 
 	client := model.NewClient(args.SiteURL)
 	client.SetTeamId(team.Id)
-	userCreator := NewAutoUserCreator(client, team)
+	userCreator := NewAutoUserCreator(a, client, team)
 	userCreator.Fuzzy = doFuzz
 	userCreator.CreateTestUsers(usersr)
 
 	return &model.CommandResponse{Text: "Added users", ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
 }
 
-func (me *LoadTestProvider) ChannelsCommand(args *model.CommandArgs, message string) *model.CommandResponse {
+func (me *LoadTestProvider) ChannelsCommand(a *App, args *model.CommandArgs, message string) *model.CommandResponse {
 	cmd := strings.TrimSpace(strings.TrimPrefix(message, "channels"))
 
 	doFuzz := false
@@ -244,12 +247,12 @@ func (me *LoadTestProvider) ChannelsCommand(args *model.CommandArgs, message str
 	}
 
 	channelsr, err := parseRange(cmd, "")
-	if err == false {
+	if !err {
 		channelsr = utils.Range{Begin: 2, End: 5}
 	}
 
 	var team *model.Team
-	if tr := <-Srv.Store.Team().Get(args.TeamId); tr.Err != nil {
+	if tr := <-a.Srv.Store.Team().Get(args.TeamId); tr.Err != nil {
 		return &model.CommandResponse{Text: "Failed to create testing environment", ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
 	} else {
 		team = tr.Data.(*model.Team)
@@ -265,7 +268,7 @@ func (me *LoadTestProvider) ChannelsCommand(args *model.CommandArgs, message str
 	return &model.CommandResponse{Text: "Added channels", ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
 }
 
-func (me *LoadTestProvider) PostsCommand(args *model.CommandArgs, message string) *model.CommandResponse {
+func (me *LoadTestProvider) PostsCommand(a *App, args *model.CommandArgs, message string) *model.CommandResponse {
 	cmd := strings.TrimSpace(strings.TrimPrefix(message, "posts"))
 
 	doFuzz := false
@@ -275,7 +278,7 @@ func (me *LoadTestProvider) PostsCommand(args *model.CommandArgs, message string
 	}
 
 	postsr, err := parseRange(cmd, "")
-	if err == false {
+	if !err {
 		postsr = utils.Range{Begin: 20, End: 30}
 	}
 
@@ -288,7 +291,7 @@ func (me *LoadTestProvider) PostsCommand(args *model.CommandArgs, message string
 	}
 
 	var usernames []string
-	if result := <-Srv.Store.User().GetProfiles(args.TeamId, 0, 1000); result.Err == nil {
+	if result := <-a.Srv.Store.User().GetProfiles(args.TeamId, 0, 1000); result.Err == nil {
 		profileUsers := result.Data.([]*model.User)
 		usernames = make([]string, len(profileUsers))
 		i := 0
@@ -315,7 +318,7 @@ func (me *LoadTestProvider) PostsCommand(args *model.CommandArgs, message string
 	return &model.CommandResponse{Text: "Added posts", ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
 }
 
-func (me *LoadTestProvider) UrlCommand(args *model.CommandArgs, message string) *model.CommandResponse {
+func (me *LoadTestProvider) UrlCommand(a *App, args *model.CommandArgs, message string) *model.CommandResponse {
 	url := strings.TrimSpace(strings.TrimPrefix(message, "url"))
 	if len(url) == 0 {
 		return &model.CommandResponse{Text: "Command must contain a url", ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
@@ -323,7 +326,7 @@ func (me *LoadTestProvider) UrlCommand(args *model.CommandArgs, message string) 
 
 	// provide a shortcut to easily access tests stored in doc/developer/tests
 	if !strings.HasPrefix(url, "http") {
-		url = "https://raw.githubusercontent.com/mattermost/platform/master/tests/" + url
+		url = "https://raw.githubusercontent.com/mattermost/mattermost-server/master/tests/" + url
 
 		if path.Ext(url) == "" {
 			url += ".md"
@@ -357,7 +360,7 @@ func (me *LoadTestProvider) UrlCommand(args *model.CommandArgs, message string) 
 		post.ChannelId = args.ChannelId
 		post.UserId = args.UserId
 
-		if _, err := CreatePost(post, args.TeamId, false); err != nil {
+		if _, err := a.CreatePostMissingChannel(post, false); err != nil {
 			return &model.CommandResponse{Text: "Unable to create post", ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
 		}
 	}
@@ -365,7 +368,7 @@ func (me *LoadTestProvider) UrlCommand(args *model.CommandArgs, message string) 
 	return &model.CommandResponse{Text: "Loaded data", ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
 }
 
-func (me *LoadTestProvider) JsonCommand(args *model.CommandArgs, message string) *model.CommandResponse {
+func (me *LoadTestProvider) JsonCommand(a *App, args *model.CommandArgs, message string) *model.CommandResponse {
 	url := strings.TrimSpace(strings.TrimPrefix(message, "json"))
 	if len(url) == 0 {
 		return &model.CommandResponse{Text: "Command must contain a url", ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
@@ -373,7 +376,7 @@ func (me *LoadTestProvider) JsonCommand(args *model.CommandArgs, message string)
 
 	// provide a shortcut to easily access tests stored in doc/developer/tests
 	if !strings.HasPrefix(url, "http") {
-		url = "https://raw.githubusercontent.com/mattermost/platform/master/tests/" + url
+		url = "https://raw.githubusercontent.com/mattermost/mattermost-server/master/tests/" + url
 
 		if path.Ext(url) == "" {
 			url += ".json"
@@ -396,7 +399,7 @@ func (me *LoadTestProvider) JsonCommand(args *model.CommandArgs, message string)
 		post.Message = message
 	}
 
-	if _, err := CreatePost(post, args.TeamId, false); err != nil {
+	if _, err := a.CreatePostMissingChannel(post, false); err != nil {
 		return &model.CommandResponse{Text: "Unable to create post", ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
 	}
 	return &model.CommandResponse{Text: "Loaded data", ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}

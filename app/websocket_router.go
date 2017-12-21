@@ -6,8 +6,10 @@ package app
 import (
 	l4g "github.com/alecthomas/log4go"
 
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"net/http"
+
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
 type webSocketHandler interface {
@@ -15,13 +17,8 @@ type webSocketHandler interface {
 }
 
 type WebSocketRouter struct {
+	app      *App
 	handlers map[string]webSocketHandler
-}
-
-func NewWebSocketRouter() *WebSocketRouter {
-	router := &WebSocketRouter{}
-	router.handlers = make(map[string]webSocketHandler)
-	return router
 }
 
 func (wr *WebSocketRouter) Handle(action string, handler webSocketHandler) {
@@ -30,19 +27,19 @@ func (wr *WebSocketRouter) Handle(action string, handler webSocketHandler) {
 
 func (wr *WebSocketRouter) ServeWebSocket(conn *WebConn, r *model.WebSocketRequest) {
 	if r.Action == "" {
-		err := model.NewLocAppError("ServeWebSocket", "api.web_socket_router.no_action.app_error", nil, "")
+		err := model.NewAppError("ServeWebSocket", "api.web_socket_router.no_action.app_error", nil, "", http.StatusBadRequest)
 		ReturnWebSocketError(conn, r, err)
 		return
 	}
 
 	if r.Seq <= 0 {
-		err := model.NewLocAppError("ServeWebSocket", "api.web_socket_router.bad_seq.app_error", nil, "")
+		err := model.NewAppError("ServeWebSocket", "api.web_socket_router.bad_seq.app_error", nil, "", http.StatusBadRequest)
 		ReturnWebSocketError(conn, r, err)
 		return
 	}
 
 	if r.Action == model.WEBSOCKET_AUTHENTICATION_CHALLENGE {
-		if conn.SessionToken != "" {
+		if conn.GetSessionToken() != "" {
 			return
 		}
 
@@ -52,20 +49,21 @@ func (wr *WebSocketRouter) ServeWebSocket(conn *WebConn, r *model.WebSocketReque
 			return
 		}
 
-		session, err := GetSession(token)
+		session, err := wr.app.GetSession(token)
 
 		if err != nil {
 			conn.WebSocket.Close()
 		} else {
-			go func() {
-				SetStatusOnline(session.UserId, session.Id, false)
-				UpdateLastActivityAtIfNeeded(*session)
-			}()
+			wr.app.Go(func() {
+				wr.app.SetStatusOnline(session.UserId, session.Id, false)
+				wr.app.UpdateLastActivityAtIfNeeded(*session)
+			})
 
-			conn.SessionToken = session.Token
+			conn.SetSession(session)
+			conn.SetSessionToken(session.Token)
 			conn.UserId = session.UserId
 
-			HubRegister(conn)
+			wr.app.HubRegister(conn)
 
 			resp := model.NewWebSocketResponse(model.STATUS_OK, r.Seq, nil)
 			conn.Send <- resp
@@ -75,14 +73,14 @@ func (wr *WebSocketRouter) ServeWebSocket(conn *WebConn, r *model.WebSocketReque
 	}
 
 	if !conn.IsAuthenticated() {
-		err := model.NewLocAppError("ServeWebSocket", "api.web_socket_router.not_authenticated.app_error", nil, "")
+		err := model.NewAppError("ServeWebSocket", "api.web_socket_router.not_authenticated.app_error", nil, "", http.StatusUnauthorized)
 		ReturnWebSocketError(conn, r, err)
 		return
 	}
 
 	var handler webSocketHandler
 	if h, ok := wr.handlers[r.Action]; !ok {
-		err := model.NewLocAppError("ServeWebSocket", "api.web_socket_router.bad_action.app_error", nil, "")
+		err := model.NewAppError("ServeWebSocket", "api.web_socket_router.bad_action.app_error", nil, "", http.StatusInternalServerError)
 		ReturnWebSocketError(conn, r, err)
 		return
 	} else {

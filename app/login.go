@@ -9,16 +9,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mattermost/platform/einterfaces"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/model"
 	"github.com/mssola/user_agent"
 )
 
-func AuthenticateUserForLogin(id, loginId, password, mfaToken, deviceId string, ldapOnly bool) (*model.User, *model.AppError) {
+func (a *App) AuthenticateUserForLogin(id, loginId, password, mfaToken, deviceId string, ldapOnly bool) (*model.User, *model.AppError) {
 	if len(password) == 0 {
-		err := model.NewLocAppError("AuthenticateUserForLogin", "api.user.login.blank_pwd.app_error", nil, "")
-		err.StatusCode = http.StatusBadRequest
+		err := model.NewAppError("AuthenticateUserForLogin", "api.user.login.blank_pwd.app_error", nil, "", http.StatusBadRequest)
 		return nil, err
 	}
 
@@ -26,52 +23,52 @@ func AuthenticateUserForLogin(id, loginId, password, mfaToken, deviceId string, 
 	var err *model.AppError
 
 	if len(id) != 0 {
-		if user, err = GetUser(id); err != nil {
+		if user, err = a.GetUser(id); err != nil {
 			err.StatusCode = http.StatusBadRequest
-			if einterfaces.GetMetricsInterface() != nil {
-				einterfaces.GetMetricsInterface().IncrementLoginFail()
+			if a.Metrics != nil {
+				a.Metrics.IncrementLoginFail()
 			}
 			return nil, err
 		}
 	} else {
-		if user, err = GetUserForLogin(loginId, ldapOnly); err != nil {
-			if einterfaces.GetMetricsInterface() != nil {
-				einterfaces.GetMetricsInterface().IncrementLoginFail()
+		if user, err = a.GetUserForLogin(loginId, ldapOnly); err != nil {
+			if a.Metrics != nil {
+				a.Metrics.IncrementLoginFail()
 			}
 			return nil, err
 		}
 	}
 
 	// and then authenticate them
-	if user, err = authenticateUser(user, password, mfaToken); err != nil {
-		if einterfaces.GetMetricsInterface() != nil {
-			einterfaces.GetMetricsInterface().IncrementLoginFail()
+	if user, err = a.authenticateUser(user, password, mfaToken); err != nil {
+		if a.Metrics != nil {
+			a.Metrics.IncrementLoginFail()
 		}
 		return nil, err
 	}
 
-	if einterfaces.GetMetricsInterface() != nil {
-		einterfaces.GetMetricsInterface().IncrementLogin()
+	if a.Metrics != nil {
+		a.Metrics.IncrementLogin()
 	}
 
 	return user, nil
 }
 
-func DoLogin(w http.ResponseWriter, r *http.Request, user *model.User, deviceId string) (*model.Session, *model.AppError) {
+func (a *App) DoLogin(w http.ResponseWriter, r *http.Request, user *model.User, deviceId string) (*model.Session, *model.AppError) {
 	session := &model.Session{UserId: user.Id, Roles: user.GetRawRoles(), DeviceId: deviceId, IsOAuth: false}
 
-	maxAge := *utils.Cfg.ServiceSettings.SessionLengthWebInDays * 60 * 60 * 24
+	maxAge := *a.Config().ServiceSettings.SessionLengthWebInDays * 60 * 60 * 24
 
 	if len(deviceId) > 0 {
-		session.SetExpireInDays(*utils.Cfg.ServiceSettings.SessionLengthMobileInDays)
+		session.SetExpireInDays(*a.Config().ServiceSettings.SessionLengthMobileInDays)
 
 		// A special case where we logout of all other sessions with the same Id
-		if err := RevokeSessionsForDeviceId(user.Id, deviceId, ""); err != nil {
+		if err := a.RevokeSessionsForDeviceId(user.Id, deviceId, ""); err != nil {
 			err.StatusCode = http.StatusInternalServerError
 			return nil, err
 		}
 	} else {
-		session.SetExpireInDays(*utils.Cfg.ServiceSettings.SessionLengthWebInDays)
+		session.SetExpireInDays(*a.Config().ServiceSettings.SessionLengthWebInDays)
 	}
 
 	ua := user_agent.New(r.UserAgent())
@@ -104,7 +101,7 @@ func DoLogin(w http.ResponseWriter, r *http.Request, user *model.User, deviceId 
 	session.AddProp(model.SESSION_PROP_BROWSER, fmt.Sprintf("%v/%v", bname, bversion))
 
 	var err *model.AppError
-	if session, err = CreateSession(session); err != nil {
+	if session, err = a.CreateSession(session); err != nil {
 		err.StatusCode = http.StatusInternalServerError
 		return nil, err
 	}

@@ -4,7 +4,7 @@
 package app
 
 import (
-	"github.com/mattermost/platform/model"
+	"github.com/mattermost/mattermost-server/model"
 	goi18n "github.com/nicksnyder/go-i18n/i18n"
 )
 
@@ -23,7 +23,7 @@ func (me *MeProvider) GetTrigger() string {
 	return CMD_ME
 }
 
-func (me *MeProvider) GetCommand(T goi18n.TranslateFunc) *model.Command {
+func (me *MeProvider) GetCommand(a *App, T goi18n.TranslateFunc) *model.Command {
 	return &model.Command{
 		Trigger:          CMD_ME,
 		AutoComplete:     true,
@@ -33,6 +33,6 @@ func (me *MeProvider) GetCommand(T goi18n.TranslateFunc) *model.Command {
 	}
 }
 
-func (me *MeProvider) DoCommand(args *model.CommandArgs, message string) *model.CommandResponse {
+func (me *MeProvider) DoCommand(a *App, args *model.CommandArgs, message string) *model.CommandResponse {
 	return &model.CommandResponse{ResponseType: model.COMMAND_RESPONSE_TYPE_IN_CHANNEL, Text: "*" + message + "*"}
 }

@@ -11,9 +11,14 @@ import (
 
 	l4g "github.com/alecthomas/log4go"
 	"github.com/gorilla/mux"
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/app"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
+)
+
+const (
+	PREVIEW_IMAGE_TYPE   = "image/jpeg"
+	THUMBNAIL_IMAGE_TYPE = "image/jpeg"
 )
 
 var UNSAFE_CONTENT_TYPES = [...]string{
@@ -25,34 +30,33 @@ var UNSAFE_CONTENT_TYPES = [...]string{
 	"text/html",
 }
 
-func InitFile() {
+func (api *API) InitFile() {
 	l4g.Debug(utils.T("api.file.init.debug"))
 
-	BaseRoutes.TeamFiles.Handle("/upload", ApiUserRequired(uploadFile)).Methods("POST")
+	api.BaseRoutes.TeamFiles.Handle("/upload", api.ApiUserRequired(uploadFile)).Methods("POST")
 
-	BaseRoutes.NeedFile.Handle("/get", ApiUserRequiredTrustRequester(getFile)).Methods("GET")
-	BaseRoutes.NeedFile.Handle("/get_thumbnail", ApiUserRequiredTrustRequester(getFileThumbnail)).Methods("GET")
-	BaseRoutes.NeedFile.Handle("/get_preview", ApiUserRequiredTrustRequester(getFilePreview)).Methods("GET")
-	BaseRoutes.NeedFile.Handle("/get_info", ApiUserRequired(getFileInfo)).Methods("GET")
-	BaseRoutes.NeedFile.Handle("/get_public_link", ApiUserRequired(getPublicLink)).Methods("GET")
+	api.BaseRoutes.NeedFile.Handle("/get", api.ApiUserRequiredTrustRequester(getFile)).Methods("GET")
+	api.BaseRoutes.NeedFile.Handle("/get_thumbnail", api.ApiUserRequiredTrustRequester(getFileThumbnail)).Methods("GET")
+	api.BaseRoutes.NeedFile.Handle("/get_preview", api.ApiUserRequiredTrustRequester(getFilePreview)).Methods("GET")
+	api.BaseRoutes.NeedFile.Handle("/get_info", api.ApiUserRequired(getFileInfo)).Methods("GET")
+	api.BaseRoutes.NeedFile.Handle("/get_public_link", api.ApiUserRequired(getPublicLink)).Methods("GET")
 
-	BaseRoutes.Public.Handle("/files/{file_id:[A-Za-z0-9]+}/get", ApiAppHandlerTrustRequesterIndependent(getPublicFile)).Methods("GET")
-	BaseRoutes.Public.Handle("/files/get/{team_id:[A-Za-z0-9]+}/{channel_id:[A-Za-z0-9]+}/{user_id:[A-Za-z0-9]+}/{filename:(?:[A-Za-z0-9]+/)?.+(?:\\.[A-Za-z0-9]{3,})?}", ApiAppHandlerTrustRequesterIndependent(getPublicFileOld)).Methods("GET")
+	api.BaseRoutes.Public.Handle("/files/{file_id:[A-Za-z0-9]+}/get", api.ApiAppHandlerTrustRequesterIndependent(getPublicFile)).Methods("GET")
+	api.BaseRoutes.Public.Handle("/files/get/{team_id:[A-Za-z0-9]+}/{channel_id:[A-Za-z0-9]+}/{user_id:[A-Za-z0-9]+}/{filename:(?:[A-Za-z0-9]+/)?.+(?:\\.[A-Za-z0-9]{3,})?}", api.ApiAppHandlerTrustRequesterIndependent(getPublicFileOld)).Methods("GET")
 }
 
 func uploadFile(c *Context, w http.ResponseWriter, r *http.Request) {
-	if !*utils.Cfg.FileSettings.EnableFileAttachments {
+	if !*c.App.Config().FileSettings.EnableFileAttachments {
 		c.Err = model.NewAppError("uploadFile", "api.file.attachments.disabled.app_error", nil, "", http.StatusNotImplemented)
 		return
 	}
 
-	if r.ContentLength > *utils.Cfg.FileSettings.MaxFileSize {
-		c.Err = model.NewLocAppError("uploadFile", "api.file.upload_file.too_large.app_error", nil, "")
-		c.Err.StatusCode = http.StatusRequestEntityTooLarge
+	if r.ContentLength > *c.App.Config().FileSettings.MaxFileSize {
+		c.Err = model.NewAppError("uploadFile", "api.file.upload_file.too_large.app_error", nil, "", http.StatusRequestEntityTooLarge)
 		return
 	}
 
-	if err := r.ParseMultipartForm(*utils.Cfg.FileSettings.MaxFileSize); err != nil {
+	if err := r.ParseMultipartForm(*c.App.Config().FileSettings.MaxFileSize); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -70,12 +74,12 @@ func uploadFile(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !app.SessionHasPermissionToChannel(c.Session, channelId, model.PERMISSION_UPLOAD_FILE) {
+	if !c.App.SessionHasPermissionToChannel(c.Session, channelId, model.PERMISSION_UPLOAD_FILE) {
 		c.SetPermissionError(model.PERMISSION_UPLOAD_FILE)
 		return
 	}
 
-	resStruct, err := app.UploadFiles(c.TeamId, channelId, c.Session.UserId, m.File["files"], m.Value["client_ids"])
+	resStruct, err := c.App.UploadFiles(c.TeamId, channelId, c.Session.UserId, m.File["files"], m.Value["client_ids"])
 	if err != nil {
 		c.Err = err
 		return
@@ -91,7 +95,7 @@ func getFile(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if data, err := app.ReadFile(info.Path); err != nil {
+	if data, err := c.App.ReadFile(info.Path); err != nil {
 		c.Err = err
 		c.Err.StatusCode = http.StatusNotFound
 	} else if err := writeFileResponse(info.Name, info.MimeType, data, w, r); err != nil {
@@ -108,15 +112,14 @@ func getFileThumbnail(c *Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	if info.ThumbnailPath == "" {
-		c.Err = model.NewLocAppError("getFileThumbnail", "api.file.get_file_thumbnail.no_thumbnail.app_error", nil, "file_id="+info.Id)
-		c.Err.StatusCode = http.StatusBadRequest
+		c.Err = model.NewAppError("getFileThumbnail", "api.file.get_file_thumbnail.no_thumbnail.app_error", nil, "file_id="+info.Id, http.StatusBadRequest)
 		return
 	}
 
-	if data, err := app.ReadFile(info.ThumbnailPath); err != nil {
+	if data, err := c.App.ReadFile(info.ThumbnailPath); err != nil {
 		c.Err = err
 		c.Err.StatusCode = http.StatusNotFound
-	} else if err := writeFileResponse(info.Name, "", data, w, r); err != nil {
+	} else if err := writeFileResponse(info.Name, THUMBNAIL_IMAGE_TYPE, data, w, r); err != nil {
 		c.Err = err
 		return
 	}
@@ -130,15 +133,14 @@ func getFilePreview(c *Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	if info.PreviewPath == "" {
-		c.Err = model.NewLocAppError("getFilePreview", "api.file.get_file_preview.no_preview.app_error", nil, "file_id="+info.Id)
-		c.Err.StatusCode = http.StatusBadRequest
+		c.Err = model.NewAppError("getFilePreview", "api.file.get_file_preview.no_preview.app_error", nil, "file_id="+info.Id, http.StatusBadRequest)
 		return
 	}
 
-	if data, err := app.ReadFile(info.PreviewPath); err != nil {
+	if data, err := c.App.ReadFile(info.PreviewPath); err != nil {
 		c.Err = err
 		c.Err.StatusCode = http.StatusNotFound
-	} else if err := writeFileResponse(info.Name, "", data, w, r); err != nil {
+	} else if err := writeFileResponse(info.Name, PREVIEW_IMAGE_TYPE, data, w, r); err != nil {
 		c.Err = err
 		return
 	}
@@ -157,9 +159,8 @@ func getFileInfo(c *Context, w http.ResponseWriter, r *http.Request) {
 }
 
 func getPublicFile(c *Context, w http.ResponseWriter, r *http.Request) {
-	if !utils.Cfg.FileSettings.EnablePublicLink {
-		c.Err = model.NewLocAppError("getPublicFile", "api.file.get_file.public_disabled.app_error", nil, "")
-		c.Err.StatusCode = http.StatusNotImplemented
+	if !c.App.Config().FileSettings.EnablePublicLink {
+		c.Err = model.NewAppError("getPublicFile", "api.file.get_file.public_disabled.app_error", nil, "", http.StatusNotImplemented)
 		return
 	}
 
@@ -172,20 +173,20 @@ func getPublicFile(c *Context, w http.ResponseWriter, r *http.Request) {
 	hash := r.URL.Query().Get("h")
 
 	if len(hash) > 0 {
-		correctHash := app.GeneratePublicLinkHash(info.Id, *utils.Cfg.FileSettings.PublicLinkSalt)
+		correctHash := app.GeneratePublicLinkHash(info.Id, *c.App.Config().FileSettings.PublicLinkSalt)
 
 		if hash != correctHash {
-			c.Err = model.NewLocAppError("getPublicFile", "api.file.get_file.public_invalid.app_error", nil, "")
-			c.Err.StatusCode = http.StatusBadRequest
+			c.Err = model.NewAppError("getPublicFile", "api.file.get_file.public_invalid.app_error", nil, "", http.StatusBadRequest)
+			http.Redirect(w, r, c.GetSiteURLHeader()+"/error?message="+utils.T(c.Err.Message), http.StatusTemporaryRedirect)
 			return
 		}
 	} else {
-		c.Err = model.NewLocAppError("getPublicFile", "api.file.get_file.public_invalid.app_error", nil, "")
-		c.Err.StatusCode = http.StatusBadRequest
+		c.Err = model.NewAppError("getPublicFile", "api.file.get_file.public_invalid.app_error", nil, "", http.StatusBadRequest)
+		http.Redirect(w, r, c.GetSiteURLHeader()+"/error?message="+utils.T(c.Err.Message), http.StatusTemporaryRedirect)
 		return
 	}
 
-	if data, err := app.ReadFile(info.Path); err != nil {
+	if data, err := c.App.ReadFile(info.Path); err != nil {
 		c.Err = err
 		c.Err.StatusCode = http.StatusNotFound
 	} else if err := writeFileResponse(info.Name, info.MimeType, data, w, r); err != nil {
@@ -195,7 +196,7 @@ func getPublicFile(c *Context, w http.ResponseWriter, r *http.Request) {
 }
 
 func getFileInfoForRequest(c *Context, r *http.Request, requireFileVisible bool) (*model.FileInfo, *model.AppError) {
-	if len(utils.Cfg.FileSettings.DriverName) == 0 {
+	if len(*c.App.Config().FileSettings.DriverName) == 0 {
 		return nil, model.NewAppError("getFileInfoForRequest", "api.file.get_info_for_request.storage.app_error", nil, "", http.StatusNotImplemented)
 	}
 
@@ -206,7 +207,7 @@ func getFileInfoForRequest(c *Context, r *http.Request, requireFileVisible bool)
 		return nil, NewInvalidParamError("getFileInfoForRequest", "file_id")
 	}
 
-	info, err := app.GetFileInfo(fileId)
+	info, err := c.App.GetFileInfo(fileId)
 	if err != nil {
 		return nil, err
 	}
@@ -214,13 +215,12 @@ func getFileInfoForRequest(c *Context, r *http.Request, requireFileVisible bool)
 	// only let users access files visible in a channel, unless they're the one who uploaded the file
 	if info.CreatorId != c.Session.UserId {
 		if len(info.PostId) == 0 {
-			err := model.NewLocAppError("getFileInfoForRequest", "api.file.get_file_info_for_request.no_post.app_error", nil, "file_id="+fileId)
-			err.StatusCode = http.StatusBadRequest
+			err := model.NewAppError("getFileInfoForRequest", "api.file.get_file_info_for_request.no_post.app_error", nil, "file_id="+fileId, http.StatusBadRequest)
 			return nil, err
 		}
 
 		if requireFileVisible {
-			if !app.SessionHasPermissionToChannelByPost(c.Session, info.PostId, model.PERMISSION_READ_CHANNEL) {
+			if !c.App.SessionHasPermissionToChannelByPost(c.Session, info.PostId, model.PERMISSION_READ_CHANNEL) {
 				c.SetPermissionError(model.PERMISSION_READ_CHANNEL)
 				return nil, c.Err
 			}
@@ -231,13 +231,11 @@ func getFileInfoForRequest(c *Context, r *http.Request, requireFileVisible bool)
 }
 
 func getPublicFileOld(c *Context, w http.ResponseWriter, r *http.Request) {
-	if len(utils.Cfg.FileSettings.DriverName) == 0 {
-		c.Err = model.NewLocAppError("getPublicFile", "api.file.get_public_file_old.storage.app_error", nil, "")
-		c.Err.StatusCode = http.StatusNotImplemented
+	if len(*c.App.Config().FileSettings.DriverName) == 0 {
+		c.Err = model.NewAppError("getPublicFile", "api.file.get_public_file_old.storage.app_error", nil, "", http.StatusNotImplemented)
 		return
-	} else if !utils.Cfg.FileSettings.EnablePublicLink {
-		c.Err = model.NewLocAppError("getPublicFile", "api.file.get_file.public_disabled.app_error", nil, "")
-		c.Err.StatusCode = http.StatusNotImplemented
+	} else if !c.App.Config().FileSettings.EnablePublicLink {
+		c.Err = model.NewAppError("getPublicFile", "api.file.get_file.public_disabled.app_error", nil, "", http.StatusNotImplemented)
 		return
 	}
 
@@ -251,23 +249,23 @@ func getPublicFileOld(c *Context, w http.ResponseWriter, r *http.Request) {
 	hash := r.URL.Query().Get("h")
 
 	if len(hash) > 0 {
-		correctHash := app.GeneratePublicLinkHash(filename, *utils.Cfg.FileSettings.PublicLinkSalt)
+		correctHash := app.GeneratePublicLinkHash(filename, *c.App.Config().FileSettings.PublicLinkSalt)
 
 		if hash != correctHash {
-			c.Err = model.NewLocAppError("getPublicFile", "api.file.get_file.public_invalid.app_error", nil, "")
-			c.Err.StatusCode = http.StatusBadRequest
+			c.Err = model.NewAppError("getPublicFile", "api.file.get_file.public_invalid.app_error", nil, "", http.StatusBadRequest)
+			http.Redirect(w, r, c.GetSiteURLHeader()+"/error?message="+utils.T(c.Err.Message), http.StatusTemporaryRedirect)
 			return
 		}
 	} else {
-		c.Err = model.NewLocAppError("getPublicFile", "api.file.get_file.public_invalid.app_error", nil, "")
-		c.Err.StatusCode = http.StatusBadRequest
+		c.Err = model.NewAppError("getPublicFile", "api.file.get_file.public_invalid.app_error", nil, "", http.StatusBadRequest)
+		http.Redirect(w, r, c.GetSiteURLHeader()+"/error?message="+utils.T(c.Err.Message), http.StatusTemporaryRedirect)
 		return
 	}
 
 	path := "teams/" + teamId + "/channels/" + channelId + "/users/" + userId + "/" + filename
 
 	var info *model.FileInfo
-	if result := <-app.Srv.Store.FileInfo().GetByPath(path); result.Err != nil {
+	if result := <-c.App.Srv.Store.FileInfo().GetByPath(path); result.Err != nil {
 		c.Err = result.Err
 		return
 	} else {
@@ -275,12 +273,11 @@ func getPublicFileOld(c *Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(info.PostId) == 0 {
-		c.Err = model.NewLocAppError("getPublicFileOld", "api.file.get_public_file_old.no_post.app_error", nil, "file_id="+info.Id)
-		c.Err.StatusCode = http.StatusBadRequest
+		c.Err = model.NewAppError("getPublicFileOld", "api.file.get_public_file_old.no_post.app_error", nil, "file_id="+info.Id, http.StatusBadRequest)
 		return
 	}
 
-	if data, err := app.ReadFile(info.Path); err != nil {
+	if data, err := c.App.ReadFile(info.Path); err != nil {
 		c.Err = err
 		c.Err.StatusCode = http.StatusNotFound
 	} else if err := writeFileResponse(info.Name, info.MimeType, data, w, r); err != nil {
@@ -319,9 +316,8 @@ func writeFileResponse(filename string, contentType string, bytes []byte, w http
 }
 
 func getPublicLink(c *Context, w http.ResponseWriter, r *http.Request) {
-	if !utils.Cfg.FileSettings.EnablePublicLink {
-		c.Err = model.NewLocAppError("getPublicLink", "api.file.get_public_link.disabled.app_error", nil, "")
-		c.Err.StatusCode = http.StatusNotImplemented
+	if !c.App.Config().FileSettings.EnablePublicLink {
+		c.Err = model.NewAppError("getPublicLink", "api.file.get_public_link.disabled.app_error", nil, "", http.StatusNotImplemented)
 		return
 	}
 
@@ -332,10 +328,9 @@ func getPublicLink(c *Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(info.PostId) == 0 {
-		c.Err = model.NewLocAppError("getPublicLink", "api.file.get_public_link.no_post.app_error", nil, "file_id="+info.Id)
-		c.Err.StatusCode = http.StatusBadRequest
+		c.Err = model.NewAppError("getPublicLink", "api.file.get_public_link.no_post.app_error", nil, "file_id="+info.Id, http.StatusBadRequest)
 		return
 	}
 
-	w.Write([]byte(model.StringToJson(app.GeneratePublicLinkV3(c.GetSiteURLHeader(), info))))
+	w.Write([]byte(model.StringToJson(c.App.GeneratePublicLinkV3(c.GetSiteURLHeader(), info))))
 }

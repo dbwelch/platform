@@ -7,27 +7,33 @@ import (
 	"context"
 
 	l4g "github.com/alecthomas/log4go"
-	"github.com/mattermost/platform/model"
+	"github.com/mattermost/mattermost-server/einterfaces"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 const (
 	ENABLE_EXPERIMENTAL_REDIS = false
 )
 
+type LayeredStoreDatabaseLayer interface {
+	LayeredStoreSupplier
+	Store
+}
+
 type LayeredStore struct {
 	TmpContext      context.Context
 	ReactionStore   ReactionStore
-	DatabaseLayer   *SqlSupplier
+	DatabaseLayer   LayeredStoreDatabaseLayer
 	LocalCacheLayer *LocalCacheSupplier
 	RedisLayer      *RedisSupplier
 	LayerChainHead  LayeredStoreSupplier
 }
 
-func NewLayeredStore() Store {
+func NewLayeredStore(db LayeredStoreDatabaseLayer, metrics einterfaces.MetricsInterface, cluster einterfaces.ClusterInterface) Store {
 	store := &LayeredStore{
 		TmpContext:      context.TODO(),
-		DatabaseLayer:   NewSqlSupplier(),
-		LocalCacheLayer: NewLocalCacheSupplier(),
+		DatabaseLayer:   db,
+		LocalCacheLayer: NewLocalCacheSupplier(metrics, cluster),
 	}
 
 	store.ReactionStore = &LayeredReactionStore{store}
@@ -107,6 +113,10 @@ func (s *LayeredStore) Command() CommandStore {
 	return s.DatabaseLayer.Command()
 }
 
+func (s *LayeredStore) CommandWebhook() CommandWebhookStore {
+	return s.DatabaseLayer.CommandWebhook()
+}
+
 func (s *LayeredStore) Preference() PreferenceStore {
 	return s.DatabaseLayer.Preference()
 }
@@ -141,6 +151,14 @@ func (s *LayeredStore) Job() JobStore {
 
 func (s *LayeredStore) UserAccessToken() UserAccessTokenStore {
 	return s.DatabaseLayer.UserAccessToken()
+}
+
+func (s *LayeredStore) ChannelMemberHistory() ChannelMemberHistoryStore {
+	return s.DatabaseLayer.ChannelMemberHistory()
+}
+
+func (s *LayeredStore) Plugin() PluginStore {
+	return s.DatabaseLayer.Plugin()
 }
 
 func (s *LayeredStore) MarkSystemRanUnitTests() {
@@ -192,5 +210,11 @@ func (s *LayeredReactionStore) GetForPost(postId string, allowFromCache bool) St
 func (s *LayeredReactionStore) DeleteAllWithEmojiName(emojiName string) StoreChannel {
 	return s.RunQuery(func(supplier LayeredStoreSupplier) *LayeredStoreSupplierResult {
 		return supplier.ReactionDeleteAllWithEmojiName(s.TmpContext, emojiName)
+	})
+}
+
+func (s *LayeredReactionStore) PermanentDeleteBatch(endTime int64, limit int64) StoreChannel {
+	return s.RunQuery(func(supplier LayeredStoreSupplier) *LayeredStoreSupplierResult {
+		return supplier.ReactionPermanentDeleteBatch(s.TmpContext, endTime, limit)
 	})
 }

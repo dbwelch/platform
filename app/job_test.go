@@ -6,24 +6,25 @@ package app
 import (
 	"testing"
 
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/store"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/store"
 )
 
 func TestGetJob(t *testing.T) {
-	Setup()
+	th := Setup()
+	defer th.TearDown()
 
 	status := &model.Job{
 		Id:     model.NewId(),
 		Status: model.NewId(),
 	}
-	if result := <-Srv.Store.Job().Save(status); result.Err != nil {
+	if result := <-th.App.Srv.Store.Job().Save(status); result.Err != nil {
 		t.Fatal(result.Err)
 	}
 
-	defer Srv.Store.Job().Delete(status.Id)
+	defer th.App.Srv.Store.Job().Delete(status.Id)
 
-	if received, err := GetJob(status.Id); err != nil {
+	if received, err := th.App.GetJob(status.Id); err != nil {
 		t.Fatal(err)
 	} else if received.Id != status.Id || received.Status != status.Status {
 		t.Fatal("inccorrect job status received")
@@ -31,34 +32,35 @@ func TestGetJob(t *testing.T) {
 }
 
 func TestGetJobByType(t *testing.T) {
-	Setup()
+	th := Setup()
+	defer th.TearDown()
 
 	jobType := model.NewId()
 
 	statuses := []*model.Job{
 		{
-			Id:      model.NewId(),
-			Type:    jobType,
+			Id:       model.NewId(),
+			Type:     jobType,
 			CreateAt: 1000,
 		},
 		{
-			Id:      model.NewId(),
-			Type:    jobType,
+			Id:       model.NewId(),
+			Type:     jobType,
 			CreateAt: 999,
 		},
 		{
-			Id:      model.NewId(),
-			Type:    jobType,
+			Id:       model.NewId(),
+			Type:     jobType,
 			CreateAt: 1001,
 		},
 	}
 
 	for _, status := range statuses {
-		store.Must(Srv.Store.Job().Save(status))
-		defer Srv.Store.Job().Delete(status.Id)
+		store.Must(th.App.Srv.Store.Job().Save(status))
+		defer th.App.Srv.Store.Job().Delete(status.Id)
 	}
 
-	if received, err := GetJobsByType(jobType, 0, 2); err != nil {
+	if received, err := th.App.GetJobsByType(jobType, 0, 2); err != nil {
 		t.Fatal(err)
 	} else if len(received) != 2 {
 		t.Fatal("received wrong number of statuses")
@@ -68,7 +70,7 @@ func TestGetJobByType(t *testing.T) {
 		t.Fatal("should've received second newest job second")
 	}
 
-	if received, err := GetJobsByType(jobType, 2, 2); err != nil {
+	if received, err := th.App.GetJobsByType(jobType, 2, 2); err != nil {
 		t.Fatal(err)
 	} else if len(received) != 1 {
 		t.Fatal("received wrong number of statuses")

@@ -13,16 +13,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mattermost/platform/einterfaces"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/model/gitlab"
-	"github.com/mattermost/platform/utils"
+	"github.com/stretchr/testify/assert"
+
+	"github.com/mattermost/mattermost-server/einterfaces"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/model/gitlab"
 )
 
 func TestIsUsernameTaken(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
+
 	user := th.BasicUser
-	taken := IsUsernameTaken(user.Username)
+	taken := th.App.IsUsernameTaken(user.Username)
 
 	if !taken {
 		t.Logf("the username '%v' should be taken", user.Username)
@@ -30,7 +33,7 @@ func TestIsUsernameTaken(t *testing.T) {
 	}
 
 	newUsername := "randomUsername"
-	taken = IsUsernameTaken(newUsername)
+	taken = th.App.IsUsernameTaken(newUsername)
 
 	if taken {
 		t.Logf("the username '%v' should not be taken", newUsername)
@@ -40,6 +43,8 @@ func TestIsUsernameTaken(t *testing.T) {
 
 func TestCheckUserDomain(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
+
 	user := th.BasicUser
 
 	cases := []struct {
@@ -66,11 +71,13 @@ func TestCheckUserDomain(t *testing.T) {
 
 func TestCreateOAuthUser(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
+
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	glUser := oauthgitlab.GitLabUser{Id: int64(r.Intn(1000)) + 1, Username: "o" + model.NewId(), Email: model.NewId() + "@simulator.amazonses.com", Name: "Joram Wilander"}
 
 	json := glUser.ToJson()
-	user, err := CreateOAuthUser(model.USER_AUTH_SERVICE_GITLAB, strings.NewReader(json), th.BasicTeam.Id)
+	user, err := th.App.CreateOAuthUser(model.USER_AUTH_SERVICE_GITLAB, strings.NewReader(json), th.BasicTeam.Id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,24 +86,40 @@ func TestCreateOAuthUser(t *testing.T) {
 		t.Fatal("usernames didn't match")
 	}
 
-	PermanentDeleteUser(user)
+	th.App.PermanentDeleteUser(user)
 
-	userCreation := utils.Cfg.TeamSettings.EnableUserCreation
-	defer func() {
-		utils.Cfg.TeamSettings.EnableUserCreation = userCreation
-	}()
-	utils.Cfg.TeamSettings.EnableUserCreation = false
+	userCreation := th.App.Config().TeamSettings.EnableUserCreation
+	defer th.App.UpdateConfig(func(cfg *model.Config) {
+		cfg.TeamSettings.EnableUserCreation = userCreation
+	})
+	th.App.Config().TeamSettings.EnableUserCreation = false
 
-	_, err = CreateOAuthUser(model.USER_AUTH_SERVICE_GITLAB, strings.NewReader(json), th.BasicTeam.Id)
+	_, err = th.App.CreateOAuthUser(model.USER_AUTH_SERVICE_GITLAB, strings.NewReader(json), th.BasicTeam.Id)
 	if err == nil {
 		t.Fatal("should have failed - user creation disabled")
 	}
 }
 
-func TestCreateProfileImage(t *testing.T) {
-	utils.LoadConfig("config.json")
+func TestDeactivateSSOUser(t *testing.T) {
+	th := Setup().InitBasic()
+	defer th.TearDown()
 
-	b, err := CreateProfileImage("Corey Hulen", "eo1zkdr96pdj98pjmq8zy35wba")
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	glUser := oauthgitlab.GitLabUser{Id: int64(r.Intn(1000)) + 1, Username: "o" + model.NewId(), Email: model.NewId() + "@simulator.amazonses.com", Name: "Joram Wilander"}
+
+	json := glUser.ToJson()
+	user, err := th.App.CreateOAuthUser(model.USER_AUTH_SERVICE_GITLAB, strings.NewReader(json), th.BasicTeam.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer th.App.PermanentDeleteUser(user)
+
+	_, err = th.App.UpdateNonSSOUserActive(user.Id, false)
+	assert.Equal(t, "api.user.update_active.no_deactivate_sso.app_error", err.Id)
+}
+
+func TestCreateProfileImage(t *testing.T) {
+	b, err := CreateProfileImage("Corey Hulen", "eo1zkdr96pdj98pjmq8zy35wba", "luximbi.ttf")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,8 +137,29 @@ func TestCreateProfileImage(t *testing.T) {
 	}
 }
 
+func TestUpdateUserToRestrictedDomain(t *testing.T) {
+	th := Setup()
+	defer th.TearDown()
+
+	user := th.CreateUser()
+	defer th.App.PermanentDeleteUser(user)
+
+	th.App.UpdateConfig(func(cfg *model.Config) {
+		cfg.TeamSettings.RestrictCreationToDomains = "foo.com"
+	})
+
+	_, err := th.App.UpdateUser(user, false)
+	assert.True(t, err == nil)
+
+	user.Email = "asdf@ghjk.l"
+	_, err = th.App.UpdateUser(user, false)
+	assert.False(t, err == nil)
+}
+
 func TestUpdateOAuthUserAttrs(t *testing.T) {
-	Setup()
+	th := Setup()
+	defer th.TearDown()
+
 	id := model.NewId()
 	id2 := model.NewId()
 	gitlabProvider := einterfaces.GetOauthProvider("gitlab")
@@ -128,8 +172,8 @@ func TestUpdateOAuthUserAttrs(t *testing.T) {
 
 	var user, user2 *model.User
 	var gitlabUserObj oauthgitlab.GitLabUser
-	user, gitlabUserObj = createGitlabUser(t, username, email)
-	user2, _ = createGitlabUser(t, username2, email2)
+	user, gitlabUserObj = createGitlabUser(t, th.App, username, email)
+	user2, _ = createGitlabUser(t, th.App, username2, email2)
 
 	t.Run("UpdateUsername", func(t *testing.T) {
 		t.Run("NoExistingUserWithSameUsername", func(t *testing.T) {
@@ -137,9 +181,9 @@ func TestUpdateOAuthUserAttrs(t *testing.T) {
 			gitlabUser := getGitlabUserPayload(gitlabUserObj, t)
 			data := bytes.NewReader(gitlabUser)
 
-			user = getUserFromDB(user.Id, t)
-			UpdateOAuthUserAttrs(data, user, gitlabProvider, "gitlab")
-			user = getUserFromDB(user.Id, t)
+			user = getUserFromDB(th.App, user.Id, t)
+			th.App.UpdateOAuthUserAttrs(data, user, gitlabProvider, "gitlab")
+			user = getUserFromDB(th.App, user.Id, t)
 
 			if user.Username != gitlabUserObj.Username {
 				t.Fatal("user's username is not updated")
@@ -152,9 +196,9 @@ func TestUpdateOAuthUserAttrs(t *testing.T) {
 			gitlabUser := getGitlabUserPayload(gitlabUserObj, t)
 			data := bytes.NewReader(gitlabUser)
 
-			user = getUserFromDB(user.Id, t)
-			UpdateOAuthUserAttrs(data, user, gitlabProvider, "gitlab")
-			user = getUserFromDB(user.Id, t)
+			user = getUserFromDB(th.App, user.Id, t)
+			th.App.UpdateOAuthUserAttrs(data, user, gitlabProvider, "gitlab")
+			user = getUserFromDB(th.App, user.Id, t)
 
 			if user.Username == gitlabUserObj.Username {
 				t.Fatal("user's username is updated though there already exists another user with the same username")
@@ -168,9 +212,9 @@ func TestUpdateOAuthUserAttrs(t *testing.T) {
 			gitlabUser := getGitlabUserPayload(gitlabUserObj, t)
 			data := bytes.NewReader(gitlabUser)
 
-			user = getUserFromDB(user.Id, t)
-			UpdateOAuthUserAttrs(data, user, gitlabProvider, "gitlab")
-			user = getUserFromDB(user.Id, t)
+			user = getUserFromDB(th.App, user.Id, t)
+			th.App.UpdateOAuthUserAttrs(data, user, gitlabProvider, "gitlab")
+			user = getUserFromDB(th.App, user.Id, t)
 
 			if user.Email != gitlabUserObj.Email {
 				t.Fatal("user's email is not updated")
@@ -187,9 +231,9 @@ func TestUpdateOAuthUserAttrs(t *testing.T) {
 			gitlabUser := getGitlabUserPayload(gitlabUserObj, t)
 			data := bytes.NewReader(gitlabUser)
 
-			user = getUserFromDB(user.Id, t)
-			UpdateOAuthUserAttrs(data, user, gitlabProvider, "gitlab")
-			user = getUserFromDB(user.Id, t)
+			user = getUserFromDB(th.App, user.Id, t)
+			th.App.UpdateOAuthUserAttrs(data, user, gitlabProvider, "gitlab")
+			user = getUserFromDB(th.App, user.Id, t)
 
 			if user.Email == gitlabUserObj.Email {
 				t.Fatal("user's email is updated though there already exists another user with the same email")
@@ -202,9 +246,9 @@ func TestUpdateOAuthUserAttrs(t *testing.T) {
 		gitlabUser := getGitlabUserPayload(gitlabUserObj, t)
 		data := bytes.NewReader(gitlabUser)
 
-		user = getUserFromDB(user.Id, t)
-		UpdateOAuthUserAttrs(data, user, gitlabProvider, "gitlab")
-		user = getUserFromDB(user.Id, t)
+		user = getUserFromDB(th.App, user.Id, t)
+		th.App.UpdateOAuthUserAttrs(data, user, gitlabProvider, "gitlab")
+		user = getUserFromDB(th.App, user.Id, t)
 
 		if user.FirstName != "Updated" {
 			t.Fatal("user's first name is not updated")
@@ -216,9 +260,9 @@ func TestUpdateOAuthUserAttrs(t *testing.T) {
 		gitlabUser := getGitlabUserPayload(gitlabUserObj, t)
 		data := bytes.NewReader(gitlabUser)
 
-		user = getUserFromDB(user.Id, t)
-		UpdateOAuthUserAttrs(data, user, gitlabProvider, "gitlab")
-		user = getUserFromDB(user.Id, t)
+		user = getUserFromDB(th.App, user.Id, t)
+		th.App.UpdateOAuthUserAttrs(data, user, gitlabProvider, "gitlab")
+		user = getUserFromDB(th.App, user.Id, t)
 
 		if user.LastName != "Lastname" {
 			t.Fatal("user's last name is not updated")
@@ -226,8 +270,8 @@ func TestUpdateOAuthUserAttrs(t *testing.T) {
 	})
 }
 
-func getUserFromDB(id string, t *testing.T) *model.User {
-	if user, err := GetUser(id); err != nil {
+func getUserFromDB(a *App, id string, t *testing.T) *model.User {
+	if user, err := a.GetUser(id); err != nil {
 		t.Fatal("user is not found")
 		return nil
 	} else {
@@ -245,15 +289,15 @@ func getGitlabUserPayload(gitlabUser oauthgitlab.GitLabUser, t *testing.T) []byt
 	return payload
 }
 
-func createGitlabUser(t *testing.T, email string, username string) (*model.User, oauthgitlab.GitLabUser) {
+func createGitlabUser(t *testing.T, a *App, email string, username string) (*model.User, oauthgitlab.GitLabUser) {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	gitlabUserObj := oauthgitlab.GitLabUser{Id: int64(r.Intn(1000)), Username: username, Login: "user1", Email: email, Name: "Test User"}
+	gitlabUserObj := oauthgitlab.GitLabUser{Id: int64(r.Intn(1000)) + 1, Username: username, Login: "user1", Email: email, Name: "Test User"}
 	gitlabUser := getGitlabUserPayload(gitlabUserObj, t)
 
 	var user *model.User
 	var err *model.AppError
 
-	if user, err = CreateOAuthUser("gitlab", bytes.NewReader(gitlabUser), ""); err != nil {
+	if user, err = a.CreateOAuthUser("gitlab", bytes.NewReader(gitlabUser), ""); err != nil {
 		t.Fatal("unable to create the user")
 	}
 

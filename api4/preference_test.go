@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mattermost/platform/model"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 func TestGetPreferences(t *testing.T) {
 	th := Setup().InitBasic()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	th.LoginBasic()
@@ -71,7 +71,7 @@ func TestGetPreferences(t *testing.T) {
 
 func TestGetPreferencesByCategory(t *testing.T) {
 	th := Setup().InitBasic()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	th.LoginBasic()
@@ -130,7 +130,7 @@ func TestGetPreferencesByCategory(t *testing.T) {
 
 func TestGetPreferenceByCategoryAndName(t *testing.T) {
 	th := Setup().InitBasic()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	th.LoginBasic()
@@ -185,7 +185,7 @@ func TestGetPreferenceByCategoryAndName(t *testing.T) {
 
 func TestUpdatePreferences(t *testing.T) {
 	th := Setup().InitBasic()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	th.LoginBasic()
@@ -244,6 +244,7 @@ func TestUpdatePreferences(t *testing.T) {
 
 func TestUpdatePreferencesWebsocket(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
 
 	WebSocketClient, err := th.CreateWebSocketClient()
 	if err != nil {
@@ -251,6 +252,10 @@ func TestUpdatePreferencesWebsocket(t *testing.T) {
 	}
 
 	WebSocketClient.Listen()
+	time.Sleep(300 * time.Millisecond)
+	if resp := <-WebSocketClient.ResponseChannel; resp.Status != model.STATUS_OK {
+		t.Fatal("should have responded OK to authentication challenge")
+	}
 
 	userId := th.BasicUser.Id
 	preferences := &model.Preferences{
@@ -299,7 +304,7 @@ func TestUpdatePreferencesWebsocket(t *testing.T) {
 
 func TestDeletePreferences(t *testing.T) {
 	th := Setup().InitBasic()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	th.LoginBasic()
@@ -346,6 +351,7 @@ func TestDeletePreferences(t *testing.T) {
 
 func TestDeletePreferencesWebsocket(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
 
 	userId := th.BasicUser.Id
 	preferences := &model.Preferences{
@@ -369,6 +375,10 @@ func TestDeletePreferencesWebsocket(t *testing.T) {
 	}
 
 	WebSocketClient.Listen()
+	time.Sleep(300 * time.Millisecond)
+	if resp := <-WebSocketClient.ResponseChannel; resp.Status != model.STATUS_OK {
+		t.Fatal("should have responded OK to authentication challenge")
+	}
 
 	_, resp = th.Client.DeletePreferences(userId, preferences)
 	CheckNoError(t, resp)

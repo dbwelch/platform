@@ -7,18 +7,17 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/store"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/store"
 )
 
 func TestCreateJob(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 
 	job := &model.Job{
 		Type: model.JOB_TYPE_DATA_RETENTION,
-		Data: map[string]interface{}{
+		Data: map[string]string{
 			"thing": "stuff",
 		},
 	}
@@ -26,7 +25,7 @@ func TestCreateJob(t *testing.T) {
 	received, resp := th.SystemAdminClient.CreateJob(job)
 	CheckNoError(t, resp)
 
-	defer app.Srv.Store.Job().Delete(received.Id)
+	defer th.App.Srv.Store.Job().Delete(received.Id)
 
 	job = &model.Job{
 		Type: model.NewId(),
@@ -41,17 +40,17 @@ func TestCreateJob(t *testing.T) {
 
 func TestGetJob(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 
 	job := &model.Job{
 		Id:     model.NewId(),
 		Status: model.JOB_STATUS_PENDING,
 	}
-	if result := <-app.Srv.Store.Job().Save(job); result.Err != nil {
+	if result := <-th.App.Srv.Store.Job().Save(job); result.Err != nil {
 		t.Fatal(result.Err)
 	}
 
-	defer app.Srv.Store.Job().Delete(job.Id)
+	defer th.App.Srv.Store.Job().Delete(job.Id)
 
 	received, resp := th.SystemAdminClient.GetJob(job.Id)
 	CheckNoError(t, resp)
@@ -72,31 +71,32 @@ func TestGetJob(t *testing.T) {
 
 func TestGetJobs(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 
 	jobType := model.NewId()
 
+	t0 := model.GetMillis()
 	jobs := []*model.Job{
 		{
 			Id:       model.NewId(),
 			Type:     jobType,
-			CreateAt: model.GetMillis() + 1,
+			CreateAt: t0 + 1,
 		},
 		{
 			Id:       model.NewId(),
 			Type:     jobType,
-			CreateAt: model.GetMillis(),
+			CreateAt: t0,
 		},
 		{
 			Id:       model.NewId(),
 			Type:     jobType,
-			CreateAt: model.GetMillis() + 2,
+			CreateAt: t0 + 2,
 		},
 	}
 
 	for _, job := range jobs {
-		store.Must(app.Srv.Store.Job().Save(job))
-		defer app.Srv.Store.Job().Delete(job.Id)
+		store.Must(th.App.Srv.Store.Job().Save(job))
+		defer th.App.Srv.Store.Job().Delete(job.Id)
 	}
 
 	received, resp := th.SystemAdminClient.GetJobs(0, 2)
@@ -123,7 +123,7 @@ func TestGetJobs(t *testing.T) {
 
 func TestGetJobsByType(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 
 	jobType := model.NewId()
 
@@ -151,8 +151,8 @@ func TestGetJobsByType(t *testing.T) {
 	}
 
 	for _, job := range jobs {
-		store.Must(app.Srv.Store.Job().Save(job))
-		defer app.Srv.Store.Job().Delete(job.Id)
+		store.Must(th.App.Srv.Store.Job().Save(job))
+		defer th.App.Srv.Store.Job().Delete(job.Id)
 	}
 
 	received, resp := th.SystemAdminClient.GetJobsByType(jobType, 0, 2)
@@ -187,7 +187,7 @@ func TestGetJobsByType(t *testing.T) {
 
 func TestCancelJob(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 
 	jobs := []*model.Job{
 		{
@@ -208,8 +208,8 @@ func TestCancelJob(t *testing.T) {
 	}
 
 	for _, job := range jobs {
-		store.Must(app.Srv.Store.Job().Save(job))
-		defer app.Srv.Store.Job().Delete(job.Id)
+		store.Must(th.App.Srv.Store.Job().Save(job))
+		defer th.App.Srv.Store.Job().Delete(job.Id)
 	}
 
 	_, resp := th.Client.CancelJob(jobs[0].Id)

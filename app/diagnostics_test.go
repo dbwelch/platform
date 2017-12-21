@@ -12,7 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mattermost/platform/utils"
+	"github.com/stretchr/testify/assert"
+
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
 func newTestServer() (chan string, *httptest.Server) {
@@ -28,8 +31,35 @@ func newTestServer() (chan string, *httptest.Server) {
 	return result, server
 }
 
+func TestPluginSetting(t *testing.T) {
+	settings := &model.PluginSettings{
+		Plugins: map[string]interface{}{
+			"test": map[string]string{
+				"foo": "bar",
+			},
+		},
+	}
+	assert.Equal(t, "bar", pluginSetting(settings, "test", "foo", "asd"))
+	assert.Equal(t, "asd", pluginSetting(settings, "test", "qwe", "asd"))
+}
+
+func TestPluginActivated(t *testing.T) {
+	states := map[string]*model.PluginState{
+		"foo": &model.PluginState{
+			Enable: true,
+		},
+		"bar": &model.PluginState{
+			Enable: false,
+		},
+	}
+	assert.True(t, pluginActivated(states, "foo"))
+	assert.False(t, pluginActivated(states, "bar"))
+	assert.False(t, pluginActivated(states, "none"))
+}
+
 func TestDiagnostics(t *testing.T) {
-	Setup().InitBasic()
+	th := Setup().InitBasic()
+	defer th.TearDown()
 
 	if testing.Short() {
 		t.SkipNow()
@@ -73,7 +103,7 @@ func TestDiagnostics(t *testing.T) {
 	})
 
 	t.Run("SendDailyDiagnostics", func(t *testing.T) {
-		SendDailyDiagnostics()
+		th.App.SendDailyDiagnostics()
 
 		info := ""
 		// Collect the info sent.
@@ -116,8 +146,11 @@ func TestDiagnostics(t *testing.T) {
 			TRACK_CONFIG_SUPPORT,
 			TRACK_CONFIG_NATIVEAPP,
 			TRACK_CONFIG_ANALYTICS,
+			TRACK_CONFIG_PLUGIN,
 			TRACK_ACTIVITY,
 			TRACK_SERVER,
+			TRACK_CONFIG_MESSAGE_EXPORT,
+			TRACK_PLUGINS,
 		} {
 			if !strings.Contains(info, item) {
 				t.Fatal("Sent diagnostics missing item: " + item)
@@ -126,13 +159,11 @@ func TestDiagnostics(t *testing.T) {
 	})
 
 	t.Run("SendDailyDiagnosticsDisabled", func(t *testing.T) {
-		oldSetting := *utils.Cfg.LogSettings.EnableDiagnostics
-		*utils.Cfg.LogSettings.EnableDiagnostics = false
-		defer func() {
-			*utils.Cfg.LogSettings.EnableDiagnostics = oldSetting
-		}()
+		oldSetting := *th.App.Config().LogSettings.EnableDiagnostics
+		th.App.UpdateConfig(func(cfg *model.Config) { *cfg.LogSettings.EnableDiagnostics = false })
+		defer th.App.UpdateConfig(func(cfg *model.Config) { *cfg.LogSettings.EnableDiagnostics = oldSetting })
 
-		SendDailyDiagnostics()
+		th.App.SendDailyDiagnostics()
 
 		select {
 		case <-data:

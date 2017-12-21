@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"fmt"
-	"github.com/mattermost/platform/app"
+
 	"github.com/spf13/cobra"
 )
 
@@ -44,7 +44,8 @@ func init() {
 }
 
 func slackImportCmdF(cmd *cobra.Command, args []string) error {
-	if err := initDBCommandContextCobra(cmd); err != nil {
+	a, err := initDBCommandContextCobra(cmd)
+	if err != nil {
 		return err
 	}
 
@@ -52,7 +53,7 @@ func slackImportCmdF(cmd *cobra.Command, args []string) error {
 		return errors.New("Incorrect number of arguments.")
 	}
 
-	team := getTeamFromTeamArg(args[0])
+	team := getTeamFromTeamArg(a, args[0])
 	if team == nil {
 		return errors.New("Unable to find team '" + args[0] + "'")
 	}
@@ -70,7 +71,7 @@ func slackImportCmdF(cmd *cobra.Command, args []string) error {
 
 	CommandPrettyPrintln("Running Slack Import. This may take a long time for large teams or teams with many messages.")
 
-	app.SlackImport(fileReader, fileInfo.Size(), team.Id)
+	a.SlackImport(fileReader, fileInfo.Size(), team.Id)
 
 	CommandPrettyPrintln("Finished Slack Import.")
 
@@ -78,7 +79,8 @@ func slackImportCmdF(cmd *cobra.Command, args []string) error {
 }
 
 func bulkImportCmdF(cmd *cobra.Command, args []string) error {
-	if err := initDBCommandContextCobra(cmd); err != nil {
+	a, err := initDBCommandContextCobra(cmd)
+	if err != nil {
 		return err
 	}
 
@@ -120,7 +122,7 @@ func bulkImportCmdF(cmd *cobra.Command, args []string) error {
 
 	CommandPrettyPrintln("")
 
-	if err, lineNumber := app.BulkImport(fileReader, !apply, workers); err != nil {
+	if err, lineNumber := a.BulkImport(fileReader, !apply, workers); err != nil {
 		CommandPrettyPrintln(err.Error())
 		if lineNumber != 0 {
 			CommandPrettyPrintln(fmt.Sprintf("Error occurred on data file line %v", lineNumber))

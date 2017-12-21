@@ -9,14 +9,15 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/mattermost/platform/api"
-	"github.com/mattermost/platform/api4"
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/utils"
-	"github.com/mattermost/platform/wsapi"
-	"github.com/spf13/cobra"
 	"os/signal"
 	"syscall"
+
+	"github.com/mattermost/mattermost-server/api"
+	"github.com/mattermost/mattermost-server/api4"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
+	"github.com/mattermost/mattermost-server/wsapi"
+	"github.com/spf13/cobra"
 )
 
 var testCmd = &cobra.Command{
@@ -45,55 +46,51 @@ func init() {
 }
 
 func webClientTestsCmdF(cmd *cobra.Command, args []string) error {
-	if err := initDBCommandContextCobra(cmd); err != nil {
+	a, err := initDBCommandContextCobra(cmd)
+	if err != nil {
 		return err
 	}
+	defer a.Shutdown()
 
-	utils.InitTranslations(utils.Cfg.LocalizationSettings)
-	api.InitRouter()
-	wsapi.InitRouter()
-	api4.InitApi(false)
-	api.InitApi()
-	wsapi.InitApi()
-	setupClientTests()
-	app.StartServer()
+	utils.InitTranslations(a.Config().LocalizationSettings)
+	a.StartServer()
+	api4.Init(a, a.Srv.Router, false)
+	api.Init(a, a.Srv.Router)
+	wsapi.Init(a, a.Srv.WebSocketRouter)
+	a.UpdateConfig(setupClientTests)
 	runWebClientTests()
-	app.StopServer()
 
 	return nil
 }
 
 func serverForWebClientTestsCmdF(cmd *cobra.Command, args []string) error {
-	if err := initDBCommandContextCobra(cmd); err != nil {
+	a, err := initDBCommandContextCobra(cmd)
+	if err != nil {
 		return err
 	}
+	defer a.Shutdown()
 
-	utils.InitTranslations(utils.Cfg.LocalizationSettings)
-	api.InitRouter()
-	wsapi.InitRouter()
-	api4.InitApi(false)
-	api.InitApi()
-	wsapi.InitApi()
-	setupClientTests()
-	app.StartServer()
+	utils.InitTranslations(a.Config().LocalizationSettings)
+	a.StartServer()
+	api4.Init(a, a.Srv.Router, false)
+	api.Init(a, a.Srv.Router)
+	wsapi.Init(a, a.Srv.WebSocketRouter)
+	a.UpdateConfig(setupClientTests)
 
-	c := make(chan os.Signal)
+	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 	<-c
-
-	app.StopServer()
 
 	return nil
 }
 
-func setupClientTests() {
-	*utils.Cfg.TeamSettings.EnableOpenServer = true
-	*utils.Cfg.ServiceSettings.EnableCommands = false
-	*utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations = false
-	*utils.Cfg.ServiceSettings.EnableCustomEmoji = true
-	utils.Cfg.ServiceSettings.EnableIncomingWebhooks = false
-	utils.Cfg.ServiceSettings.EnableOutgoingWebhooks = false
-	utils.SetDefaultRolesBasedOnConfig()
+func setupClientTests(cfg *model.Config) {
+	*cfg.TeamSettings.EnableOpenServer = true
+	*cfg.ServiceSettings.EnableCommands = false
+	*cfg.ServiceSettings.EnableOnlyAdminIntegrations = false
+	*cfg.ServiceSettings.EnableCustomEmoji = true
+	cfg.ServiceSettings.EnableIncomingWebhooks = false
+	cfg.ServiceSettings.EnableOutgoingWebhooks = false
 }
 
 func executeTestCommand(cmd *exec.Cmd) {
@@ -133,7 +130,12 @@ func executeTestCommand(cmd *exec.Cmd) {
 }
 
 func runWebClientTests() {
-	os.Chdir("webapp")
+	if webappDir := os.Getenv("WEBAPP_DIR"); webappDir != "" {
+		os.Chdir(webappDir)
+	} else {
+		os.Chdir("../mattermost-webapp")
+	}
+
 	cmd := exec.Command("npm", "test")
 	executeTestCommand(cmd)
 }

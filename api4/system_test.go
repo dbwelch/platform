@@ -6,19 +6,17 @@ import (
 	"testing"
 
 	l4g "github.com/alecthomas/log4go"
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 func TestGetPing(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
-	goRoutineHealthThreshold := *utils.Cfg.ServiceSettings.GoroutineHealthThreshold
+	goRoutineHealthThreshold := *th.App.Config().ServiceSettings.GoroutineHealthThreshold
 	defer func() {
-		*utils.Cfg.ServiceSettings.GoroutineHealthThreshold = goRoutineHealthThreshold
+		th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.GoroutineHealthThreshold = goRoutineHealthThreshold })
 	}()
 
 	status, resp := Client.GetPing()
@@ -27,7 +25,7 @@ func TestGetPing(t *testing.T) {
 		t.Fatal("should return OK")
 	}
 
-	*utils.Cfg.ServiceSettings.GoroutineHealthThreshold = 10
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.GoroutineHealthThreshold = 10 })
 	status, resp = th.SystemAdminClient.GetPing()
 	CheckInternalErrorStatus(t, resp)
 	if status != "unhealthy" {
@@ -37,7 +35,7 @@ func TestGetPing(t *testing.T) {
 
 func TestGetConfig(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	_, resp := Client.GetConfig()
@@ -68,7 +66,7 @@ func TestGetConfig(t *testing.T) {
 	if cfg.GitLabSettings.Secret != model.FAKE_SETTING && len(cfg.GitLabSettings.Secret) != 0 {
 		t.Fatal("did not sanitize properly")
 	}
-	if cfg.SqlSettings.DataSource != model.FAKE_SETTING {
+	if *cfg.SqlSettings.DataSource != model.FAKE_SETTING {
 		t.Fatal("did not sanitize properly")
 	}
 	if cfg.SqlSettings.AtRestEncryptKey != model.FAKE_SETTING {
@@ -84,36 +82,36 @@ func TestGetConfig(t *testing.T) {
 
 func TestReloadConfig(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	flag, resp := Client.ReloadConfig()
 	CheckForbiddenStatus(t, resp)
-	if flag == true {
+	if flag {
 		t.Fatal("should not Reload the config due no permission.")
 	}
 
 	flag, resp = th.SystemAdminClient.ReloadConfig()
 	CheckNoError(t, resp)
-	if flag == false {
+	if !flag {
 		t.Fatal("should Reload the config")
 	}
 
-	utils.Cfg.TeamSettings.MaxUsersPerTeam = 50
-	*utils.Cfg.TeamSettings.EnableOpenServer = true
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.TeamSettings.MaxUsersPerTeam = 50 })
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.TeamSettings.EnableOpenServer = true })
 }
 
 func TestUpdateConfig(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
-	cfg := app.GetConfig()
+	cfg := th.App.GetConfig()
 
 	_, resp := Client.UpdateConfig(cfg)
 	CheckForbiddenStatus(t, resp)
 
-	SiteName := utils.Cfg.TeamSettings.SiteName
+	SiteName := th.App.Config().TeamSettings.SiteName
 
 	cfg.TeamSettings.SiteName = "MyFancyName"
 	cfg, resp = th.SystemAdminClient.UpdateConfig(cfg)
@@ -145,7 +143,7 @@ func TestUpdateConfig(t *testing.T) {
 
 func TestGetOldClientConfig(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	config, resp := Client.GetOldClientConfig("")
@@ -171,7 +169,7 @@ func TestGetOldClientConfig(t *testing.T) {
 
 func TestGetOldClientLicense(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	license, resp := Client.GetOldClientLicense("")
@@ -204,7 +202,7 @@ func TestGetOldClientLicense(t *testing.T) {
 
 func TestGetAudits(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	audits, resp := th.SystemAdminClient.GetAudits(0, 100, "")
@@ -241,36 +239,36 @@ func TestGetAudits(t *testing.T) {
 
 func TestEmailTest(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
-	SendEmailNotifications := utils.Cfg.EmailSettings.SendEmailNotifications
-	SMTPServer := utils.Cfg.EmailSettings.SMTPServer
-	SMTPPort := utils.Cfg.EmailSettings.SMTPPort
-	FeedbackEmail := utils.Cfg.EmailSettings.FeedbackEmail
+	SendEmailNotifications := th.App.Config().EmailSettings.SendEmailNotifications
+	SMTPServer := th.App.Config().EmailSettings.SMTPServer
+	SMTPPort := th.App.Config().EmailSettings.SMTPPort
+	FeedbackEmail := th.App.Config().EmailSettings.FeedbackEmail
 	defer func() {
-		utils.Cfg.EmailSettings.SendEmailNotifications = SendEmailNotifications
-		utils.Cfg.EmailSettings.SMTPServer = SMTPServer
-		utils.Cfg.EmailSettings.SMTPPort = SMTPPort
-		utils.Cfg.EmailSettings.FeedbackEmail = FeedbackEmail
+		th.App.UpdateConfig(func(cfg *model.Config) { cfg.EmailSettings.SendEmailNotifications = SendEmailNotifications })
+		th.App.UpdateConfig(func(cfg *model.Config) { cfg.EmailSettings.SMTPServer = SMTPServer })
+		th.App.UpdateConfig(func(cfg *model.Config) { cfg.EmailSettings.SMTPPort = SMTPPort })
+		th.App.UpdateConfig(func(cfg *model.Config) { cfg.EmailSettings.FeedbackEmail = FeedbackEmail })
 	}()
 
-	utils.Cfg.EmailSettings.SendEmailNotifications = false
-	utils.Cfg.EmailSettings.SMTPServer = ""
-	utils.Cfg.EmailSettings.SMTPPort = ""
-	utils.Cfg.EmailSettings.FeedbackEmail = ""
+	th.App.UpdateConfig(func(cfg *model.Config) { cfg.EmailSettings.SendEmailNotifications = false })
+	th.App.UpdateConfig(func(cfg *model.Config) { cfg.EmailSettings.SMTPServer = "" })
+	th.App.UpdateConfig(func(cfg *model.Config) { cfg.EmailSettings.SMTPPort = "" })
+	th.App.UpdateConfig(func(cfg *model.Config) { cfg.EmailSettings.FeedbackEmail = "" })
 
 	_, resp := Client.TestEmail()
 	CheckForbiddenStatus(t, resp)
 
 	_, resp = th.SystemAdminClient.TestEmail()
 	CheckErrorMessage(t, resp, "api.admin.test_email.missing_server")
-	CheckInternalErrorStatus(t, resp)
+	CheckBadRequestStatus(t, resp)
 }
 
 func TestDatabaseRecycle(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	_, resp := Client.DatabaseRecycle()
@@ -282,25 +280,25 @@ func TestDatabaseRecycle(t *testing.T) {
 
 func TestInvalidateCaches(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	flag, resp := Client.InvalidateCaches()
 	CheckForbiddenStatus(t, resp)
-	if flag == true {
+	if flag {
 		t.Fatal("should not clean the cache due no permission.")
 	}
 
 	flag, resp = th.SystemAdminClient.InvalidateCaches()
 	CheckNoError(t, resp)
-	if flag == false {
+	if !flag {
 		t.Fatal("should clean the cache")
 	}
 }
 
 func TestGetLogs(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	for i := 0; i < 20; i++ {
@@ -310,18 +308,18 @@ func TestGetLogs(t *testing.T) {
 	logs, resp := th.SystemAdminClient.GetLogs(0, 10)
 	CheckNoError(t, resp)
 
-	// if len(logs) != 10 {
-	// 	t.Log(len(logs))
-	// 	t.Fatal("wrong length")
-	// }
+	if len(logs) != 10 {
+		t.Log(len(logs))
+		t.Fatal("wrong length")
+	}
 
 	logs, resp = th.SystemAdminClient.GetLogs(1, 10)
 	CheckNoError(t, resp)
 
-	// if len(logs) != 10 {
-	// 	t.Log(len(logs))
-	// 	t.Fatal("wrong length")
-	// }
+	if len(logs) != 10 {
+		t.Log(len(logs))
+		t.Fatal("wrong length")
+	}
 
 	logs, resp = th.SystemAdminClient.GetLogs(-1, -1)
 	CheckNoError(t, resp)
@@ -340,14 +338,30 @@ func TestGetLogs(t *testing.T) {
 
 func TestPostLog(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
+
+	enableDev := *th.App.Config().ServiceSettings.EnableDeveloper
+	defer func() {
+		*th.App.Config().ServiceSettings.EnableDeveloper = enableDev
+	}()
+	*th.App.Config().ServiceSettings.EnableDeveloper = true
 
 	message := make(map[string]string)
 	message["level"] = "ERROR"
 	message["message"] = "this is a test"
 
 	_, resp := Client.PostLog(message)
+	CheckNoError(t, resp)
+
+	Client.Logout()
+
+	_, resp = Client.PostLog(message)
+	CheckNoError(t, resp)
+
+	*th.App.Config().ServiceSettings.EnableDeveloper = false
+
+	_, resp = Client.PostLog(message)
 	CheckForbiddenStatus(t, resp)
 
 	logMessage, resp := th.SystemAdminClient.PostLog(message)
@@ -359,7 +373,7 @@ func TestPostLog(t *testing.T) {
 
 func TestUploadLicenseFile(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	ok, resp := Client.UploadLicenseFile([]byte{})
@@ -377,7 +391,7 @@ func TestUploadLicenseFile(t *testing.T) {
 
 func TestRemoveLicenseFile(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	ok, resp := Client.RemoveLicenseFile()
@@ -395,7 +409,7 @@ func TestRemoveLicenseFile(t *testing.T) {
 
 func TestGetAnalyticsOld(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	rows, resp := Client.GetAnalyticsOld("", "")

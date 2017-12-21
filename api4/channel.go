@@ -7,46 +7,45 @@ import (
 	"net/http"
 
 	l4g "github.com/alecthomas/log4go"
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
-func InitChannel() {
+func (api *API) InitChannel() {
 	l4g.Debug(utils.T("api.channel.init.debug"))
 
-	BaseRoutes.Channels.Handle("", ApiSessionRequired(createChannel)).Methods("POST")
-	BaseRoutes.Channels.Handle("/direct", ApiSessionRequired(createDirectChannel)).Methods("POST")
-	BaseRoutes.Channels.Handle("/group", ApiSessionRequired(createGroupChannel)).Methods("POST")
-	BaseRoutes.Channels.Handle("/members/{user_id:[A-Za-z0-9]+}/view", ApiSessionRequired(viewChannel)).Methods("POST")
+	api.BaseRoutes.Channels.Handle("", api.ApiSessionRequired(createChannel)).Methods("POST")
+	api.BaseRoutes.Channels.Handle("/direct", api.ApiSessionRequired(createDirectChannel)).Methods("POST")
+	api.BaseRoutes.Channels.Handle("/group", api.ApiSessionRequired(createGroupChannel)).Methods("POST")
+	api.BaseRoutes.Channels.Handle("/members/{user_id:[A-Za-z0-9]+}/view", api.ApiSessionRequired(viewChannel)).Methods("POST")
 
-	BaseRoutes.ChannelsForTeam.Handle("", ApiSessionRequired(getPublicChannelsForTeam)).Methods("GET")
-	BaseRoutes.ChannelsForTeam.Handle("/deleted", ApiSessionRequired(getDeletedChannelsForTeam)).Methods("GET")
-	BaseRoutes.ChannelsForTeam.Handle("/ids", ApiSessionRequired(getPublicChannelsByIdsForTeam)).Methods("POST")
-	BaseRoutes.ChannelsForTeam.Handle("/search", ApiSessionRequired(searchChannelsForTeam)).Methods("POST")
-	BaseRoutes.User.Handle("/teams/{team_id:[A-Za-z0-9]+}/channels", ApiSessionRequired(getChannelsForTeamForUser)).Methods("GET")
+	api.BaseRoutes.ChannelsForTeam.Handle("", api.ApiSessionRequired(getPublicChannelsForTeam)).Methods("GET")
+	api.BaseRoutes.ChannelsForTeam.Handle("/deleted", api.ApiSessionRequired(getDeletedChannelsForTeam)).Methods("GET")
+	api.BaseRoutes.ChannelsForTeam.Handle("/ids", api.ApiSessionRequired(getPublicChannelsByIdsForTeam)).Methods("POST")
+	api.BaseRoutes.ChannelsForTeam.Handle("/search", api.ApiSessionRequired(searchChannelsForTeam)).Methods("POST")
+	api.BaseRoutes.User.Handle("/teams/{team_id:[A-Za-z0-9]+}/channels", api.ApiSessionRequired(getChannelsForTeamForUser)).Methods("GET")
 
-	BaseRoutes.Channel.Handle("", ApiSessionRequired(getChannel)).Methods("GET")
-	BaseRoutes.Channel.Handle("", ApiSessionRequired(updateChannel)).Methods("PUT")
-	BaseRoutes.Channel.Handle("/patch", ApiSessionRequired(patchChannel)).Methods("PUT")
-	BaseRoutes.Channel.Handle("/restore", ApiSessionRequired(restoreChannel)).Methods("POST")
-	BaseRoutes.Channel.Handle("", ApiSessionRequired(deleteChannel)).Methods("DELETE")
-	BaseRoutes.Channel.Handle("/stats", ApiSessionRequired(getChannelStats)).Methods("GET")
-	BaseRoutes.Channel.Handle("/pinned", ApiSessionRequired(getPinnedPosts)).Methods("GET")
+	api.BaseRoutes.Channel.Handle("", api.ApiSessionRequired(getChannel)).Methods("GET")
+	api.BaseRoutes.Channel.Handle("", api.ApiSessionRequired(updateChannel)).Methods("PUT")
+	api.BaseRoutes.Channel.Handle("/patch", api.ApiSessionRequired(patchChannel)).Methods("PUT")
+	api.BaseRoutes.Channel.Handle("/restore", api.ApiSessionRequired(restoreChannel)).Methods("POST")
+	api.BaseRoutes.Channel.Handle("", api.ApiSessionRequired(deleteChannel)).Methods("DELETE")
+	api.BaseRoutes.Channel.Handle("/stats", api.ApiSessionRequired(getChannelStats)).Methods("GET")
+	api.BaseRoutes.Channel.Handle("/pinned", api.ApiSessionRequired(getPinnedPosts)).Methods("GET")
 
-	BaseRoutes.ChannelForUser.Handle("/unread", ApiSessionRequired(getChannelUnread)).Methods("GET")
+	api.BaseRoutes.ChannelForUser.Handle("/unread", api.ApiSessionRequired(getChannelUnread)).Methods("GET")
 
-	BaseRoutes.ChannelByName.Handle("", ApiSessionRequired(getChannelByName)).Methods("GET")
-	BaseRoutes.ChannelByNameForTeamName.Handle("", ApiSessionRequired(getChannelByNameForTeamName)).Methods("GET")
+	api.BaseRoutes.ChannelByName.Handle("", api.ApiSessionRequired(getChannelByName)).Methods("GET")
+	api.BaseRoutes.ChannelByNameForTeamName.Handle("", api.ApiSessionRequired(getChannelByNameForTeamName)).Methods("GET")
 
-	BaseRoutes.ChannelMembers.Handle("", ApiSessionRequired(getChannelMembers)).Methods("GET")
-	BaseRoutes.ChannelMembers.Handle("/ids", ApiSessionRequired(getChannelMembersByIds)).Methods("POST")
-	BaseRoutes.ChannelMembers.Handle("", ApiSessionRequired(addChannelMember)).Methods("POST")
-	BaseRoutes.ChannelMembersForUser.Handle("", ApiSessionRequired(getChannelMembersForUser)).Methods("GET")
-	BaseRoutes.ChannelMember.Handle("", ApiSessionRequired(getChannelMember)).Methods("GET")
-	BaseRoutes.ChannelMember.Handle("", ApiSessionRequired(removeChannelMember)).Methods("DELETE")
-	BaseRoutes.ChannelMember.Handle("/roles", ApiSessionRequired(updateChannelMemberRoles)).Methods("PUT")
-	BaseRoutes.ChannelMember.Handle("/notify_props", ApiSessionRequired(updateChannelMemberNotifyProps)).Methods("PUT")
+	api.BaseRoutes.ChannelMembers.Handle("", api.ApiSessionRequired(getChannelMembers)).Methods("GET")
+	api.BaseRoutes.ChannelMembers.Handle("/ids", api.ApiSessionRequired(getChannelMembersByIds)).Methods("POST")
+	api.BaseRoutes.ChannelMembers.Handle("", api.ApiSessionRequired(addChannelMember)).Methods("POST")
+	api.BaseRoutes.ChannelMembersForUser.Handle("", api.ApiSessionRequired(getChannelMembersForUser)).Methods("GET")
+	api.BaseRoutes.ChannelMember.Handle("", api.ApiSessionRequired(getChannelMember)).Methods("GET")
+	api.BaseRoutes.ChannelMember.Handle("", api.ApiSessionRequired(removeChannelMember)).Methods("DELETE")
+	api.BaseRoutes.ChannelMember.Handle("/roles", api.ApiSessionRequired(updateChannelMemberRoles)).Methods("PUT")
+	api.BaseRoutes.ChannelMember.Handle("/notify_props", api.ApiSessionRequired(updateChannelMemberNotifyProps)).Methods("PUT")
 }
 
 func createChannel(c *Context, w http.ResponseWriter, r *http.Request) {
@@ -56,17 +55,17 @@ func createChannel(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if channel.Type == model.CHANNEL_OPEN && !app.SessionHasPermissionToTeam(c.Session, channel.TeamId, model.PERMISSION_CREATE_PUBLIC_CHANNEL) {
+	if channel.Type == model.CHANNEL_OPEN && !c.App.SessionHasPermissionToTeam(c.Session, channel.TeamId, model.PERMISSION_CREATE_PUBLIC_CHANNEL) {
 		c.SetPermissionError(model.PERMISSION_CREATE_PUBLIC_CHANNEL)
 		return
 	}
 
-	if channel.Type == model.CHANNEL_PRIVATE && !app.SessionHasPermissionToTeam(c.Session, channel.TeamId, model.PERMISSION_CREATE_PRIVATE_CHANNEL) {
+	if channel.Type == model.CHANNEL_PRIVATE && !c.App.SessionHasPermissionToTeam(c.Session, channel.TeamId, model.PERMISSION_CREATE_PRIVATE_CHANNEL) {
 		c.SetPermissionError(model.PERMISSION_CREATE_PRIVATE_CHANNEL)
 		return
 	}
 
-	if sc, err := app.CreateChannelWithUser(channel, c.Session.UserId); err != nil {
+	if sc, err := c.App.CreateChannelWithUser(channel, c.Session.UserId); err != nil {
 		c.Err = err
 		return
 	} else {
@@ -91,12 +90,12 @@ func updateChannel(c *Context, w http.ResponseWriter, r *http.Request) {
 
 	var oldChannel *model.Channel
 	var err *model.AppError
-	if oldChannel, err = app.GetChannel(channel.Id); err != nil {
+	if oldChannel, err = c.App.GetChannel(channel.Id); err != nil {
 		c.Err = err
 		return
 	}
 
-	if _, err = app.GetChannelMember(channel.Id, c.Session.UserId); err != nil {
+	if _, err = c.App.GetChannelMember(channel.Id, c.Session.UserId); err != nil {
 		c.Err = err
 		return
 	}
@@ -106,15 +105,13 @@ func updateChannel(c *Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	if oldChannel.DeleteAt > 0 {
-		c.Err = model.NewLocAppError("updateChannel", "api.channel.update_channel.deleted.app_error", nil, "")
-		c.Err.StatusCode = http.StatusBadRequest
+		c.Err = model.NewAppError("updateChannel", "api.channel.update_channel.deleted.app_error", nil, "", http.StatusBadRequest)
 		return
 	}
 
 	if oldChannel.Name == model.DEFAULT_CHANNEL {
 		if (len(channel.Name) > 0 && channel.Name != oldChannel.Name) || (len(channel.Type) > 0 && channel.Type != oldChannel.Type) {
-			c.Err = model.NewLocAppError("updateChannel", "api.channel.update_channel.tried.app_error", map[string]interface{}{"Channel": model.DEFAULT_CHANNEL}, "")
-			c.Err.StatusCode = http.StatusBadRequest
+			c.Err = model.NewAppError("updateChannel", "api.channel.update_channel.tried.app_error", map[string]interface{}{"Channel": model.DEFAULT_CHANNEL}, "", http.StatusBadRequest)
 			return
 		}
 	}
@@ -136,12 +133,12 @@ func updateChannel(c *Context, w http.ResponseWriter, r *http.Request) {
 		oldChannel.Type = channel.Type
 	}
 
-	if _, err := app.UpdateChannel(oldChannel); err != nil {
+	if _, err := c.App.UpdateChannel(oldChannel); err != nil {
 		c.Err = err
 		return
 	} else {
 		if oldChannelDisplayName != channel.DisplayName {
-			if err := app.PostUpdateChannelDisplayNameMessage(c.Session.UserId, channel.Id, c.Params.TeamId, oldChannelDisplayName, channel.DisplayName); err != nil {
+			if err := c.App.PostUpdateChannelDisplayNameMessage(c.Session.UserId, channel, oldChannelDisplayName, channel.DisplayName); err != nil {
 				l4g.Error(err.Error())
 			}
 		}
@@ -162,7 +159,7 @@ func patchChannel(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	oldChannel, err := app.GetChannel(c.Params.ChannelId)
+	oldChannel, err := c.App.GetChannel(c.Params.ChannelId)
 	if err != nil {
 		c.Err = err
 		return
@@ -172,7 +169,7 @@ func patchChannel(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if rchannel, err := app.PatchChannel(oldChannel, patch, c.Session.UserId); err != nil {
+	if rchannel, err := c.App.PatchChannel(oldChannel, patch, c.Session.UserId); err != nil {
 		c.Err = err
 		return
 	} else {
@@ -189,18 +186,18 @@ func restoreChannel(c *Context, w http.ResponseWriter, r *http.Request) {
 
 	var channel *model.Channel
 	var err *model.AppError
-	if channel, err = app.GetChannel(c.Params.ChannelId); err != nil {
+	if channel, err = c.App.GetChannel(c.Params.ChannelId); err != nil {
 		c.Err = err
 		return
 	}
 	teamId := channel.TeamId
 
-	if !app.SessionHasPermissionToTeam(c.Session, teamId, model.PERMISSION_MANAGE_TEAM) {
+	if !c.App.SessionHasPermissionToTeam(c.Session, teamId, model.PERMISSION_MANAGE_TEAM) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_TEAM)
 		return
 	}
 
-	channel, err = app.RestoreChannel(channel)
+	channel, err = c.App.RestoreChannel(channel)
 	if err != nil {
 		c.Err = err
 		return
@@ -212,12 +209,12 @@ func restoreChannel(c *Context, w http.ResponseWriter, r *http.Request) {
 }
 
 func CanManageChannel(c *Context, channel *model.Channel) bool {
-	if channel.Type == model.CHANNEL_OPEN && !app.SessionHasPermissionToChannel(c.Session, channel.Id, model.PERMISSION_MANAGE_PUBLIC_CHANNEL_PROPERTIES) {
+	if channel.Type == model.CHANNEL_OPEN && !c.App.SessionHasPermissionToChannel(c.Session, channel.Id, model.PERMISSION_MANAGE_PUBLIC_CHANNEL_PROPERTIES) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_PUBLIC_CHANNEL_PROPERTIES)
 		return false
 	}
 
-	if channel.Type == model.CHANNEL_PRIVATE && !app.SessionHasPermissionToChannel(c.Session, channel.Id, model.PERMISSION_MANAGE_PRIVATE_CHANNEL_PROPERTIES) {
+	if channel.Type == model.CHANNEL_PRIVATE && !c.App.SessionHasPermissionToChannel(c.Session, channel.Id, model.PERMISSION_MANAGE_PRIVATE_CHANNEL_PROPERTIES) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_PRIVATE_CHANNEL_PROPERTIES)
 		return false
 	}
@@ -244,17 +241,17 @@ func createDirectChannel(c *Context, w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if !app.SessionHasPermissionTo(c.Session, model.PERMISSION_CREATE_DIRECT_CHANNEL) {
+	if !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_CREATE_DIRECT_CHANNEL) {
 		c.SetPermissionError(model.PERMISSION_CREATE_DIRECT_CHANNEL)
 		return
 	}
 
-	if !allowed && !app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
+	if !allowed && !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_SYSTEM)
 		return
 	}
 
-	if sc, err := app.CreateDirectChannel(userIds[0], userIds[1]); err != nil {
+	if sc, err := c.App.CreateDirectChannel(userIds[0], userIds[1]); err != nil {
 		c.Err = err
 		return
 	} else {
@@ -286,12 +283,12 @@ func createGroupChannel(c *Context, w http.ResponseWriter, r *http.Request) {
 		userIds = append(userIds, c.Session.UserId)
 	}
 
-	if !app.SessionHasPermissionTo(c.Session, model.PERMISSION_CREATE_GROUP_CHANNEL) {
+	if !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_CREATE_GROUP_CHANNEL) {
 		c.SetPermissionError(model.PERMISSION_CREATE_GROUP_CHANNEL)
 		return
 	}
 
-	if groupChannel, err := app.CreateGroupChannel(userIds, c.Session.UserId); err != nil {
+	if groupChannel, err := c.App.CreateGroupChannel(userIds, c.Session.UserId); err != nil {
 		c.Err = err
 		return
 	} else {
@@ -306,26 +303,25 @@ func getChannel(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	channel, err := app.GetChannel(c.Params.ChannelId)
+	channel, err := c.App.GetChannel(c.Params.ChannelId)
 	if err != nil {
 		c.Err = err
 		return
 	}
 
 	if channel.Type == model.CHANNEL_OPEN {
-		if !app.SessionHasPermissionToTeam(c.Session, channel.TeamId, model.PERMISSION_READ_PUBLIC_CHANNEL) {
+		if !c.App.SessionHasPermissionToTeam(c.Session, channel.TeamId, model.PERMISSION_READ_PUBLIC_CHANNEL) {
 			c.SetPermissionError(model.PERMISSION_READ_PUBLIC_CHANNEL)
 			return
 		}
 	} else {
-		if !app.SessionHasPermissionToChannel(c.Session, c.Params.ChannelId, model.PERMISSION_READ_CHANNEL) {
+		if !c.App.SessionHasPermissionToChannel(c.Session, c.Params.ChannelId, model.PERMISSION_READ_CHANNEL) {
 			c.SetPermissionError(model.PERMISSION_READ_CHANNEL)
 			return
 		}
 	}
 
 	w.Write([]byte(channel.ToJson()))
-	return
 }
 
 func getChannelUnread(c *Context, w http.ResponseWriter, r *http.Request) {
@@ -334,17 +330,17 @@ func getChannelUnread(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !app.SessionHasPermissionToUser(c.Session, c.Params.UserId) {
+	if !c.App.SessionHasPermissionToUser(c.Session, c.Params.UserId) {
 		c.SetPermissionError(model.PERMISSION_EDIT_OTHER_USERS)
 		return
 	}
 
-	if !app.SessionHasPermissionToChannel(c.Session, c.Params.ChannelId, model.PERMISSION_READ_CHANNEL) {
+	if !c.App.SessionHasPermissionToChannel(c.Session, c.Params.ChannelId, model.PERMISSION_READ_CHANNEL) {
 		c.SetPermissionError(model.PERMISSION_READ_CHANNEL)
 		return
 	}
 
-	channelUnread, err := app.GetChannelUnread(c.Params.ChannelId, c.Params.UserId)
+	channelUnread, err := c.App.GetChannelUnread(c.Params.ChannelId, c.Params.UserId)
 	if err != nil {
 		c.Err = err
 		return
@@ -359,12 +355,12 @@ func getChannelStats(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !app.SessionHasPermissionToChannel(c.Session, c.Params.ChannelId, model.PERMISSION_READ_CHANNEL) {
+	if !c.App.SessionHasPermissionToChannel(c.Session, c.Params.ChannelId, model.PERMISSION_READ_CHANNEL) {
 		c.SetPermissionError(model.PERMISSION_READ_CHANNEL)
 		return
 	}
 
-	memberCount, err := app.GetChannelMemberCount(c.Params.ChannelId)
+	memberCount, err := c.App.GetChannelMemberCount(c.Params.ChannelId)
 
 	if err != nil {
 		c.Err = err
@@ -381,15 +377,15 @@ func getPinnedPosts(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !app.SessionHasPermissionToChannel(c.Session, c.Params.ChannelId, model.PERMISSION_READ_CHANNEL) {
+	if !c.App.SessionHasPermissionToChannel(c.Session, c.Params.ChannelId, model.PERMISSION_READ_CHANNEL) {
 		c.SetPermissionError(model.PERMISSION_READ_CHANNEL)
 		return
 	}
 
-	if posts, err := app.GetPinnedPosts(c.Params.ChannelId); err != nil {
+	if posts, err := c.App.GetPinnedPosts(c.Params.ChannelId); err != nil {
 		c.Err = err
 		return
-	} else if HandleEtag(posts.Etag(), "Get Pinned Posts", w, r) {
+	} else if c.HandleEtag(posts.Etag(), "Get Pinned Posts", w, r) {
 		return
 	} else {
 		w.Header().Set(model.HEADER_ETAG_SERVER, posts.Etag())
@@ -403,12 +399,12 @@ func getPublicChannelsForTeam(c *Context, w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if !app.SessionHasPermissionToTeam(c.Session, c.Params.TeamId, model.PERMISSION_LIST_TEAM_CHANNELS) {
+	if !c.App.SessionHasPermissionToTeam(c.Session, c.Params.TeamId, model.PERMISSION_LIST_TEAM_CHANNELS) {
 		c.SetPermissionError(model.PERMISSION_LIST_TEAM_CHANNELS)
 		return
 	}
 
-	if channels, err := app.GetPublicChannelsForTeam(c.Params.TeamId, c.Params.Page*c.Params.PerPage, c.Params.PerPage); err != nil {
+	if channels, err := c.App.GetPublicChannelsForTeam(c.Params.TeamId, c.Params.Page*c.Params.PerPage, c.Params.PerPage); err != nil {
 		c.Err = err
 		return
 	} else {
@@ -423,12 +419,12 @@ func getDeletedChannelsForTeam(c *Context, w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if !app.SessionHasPermissionToTeam(c.Session, c.Params.TeamId, model.PERMISSION_MANAGE_TEAM) {
+	if !c.App.SessionHasPermissionToTeam(c.Session, c.Params.TeamId, model.PERMISSION_MANAGE_TEAM) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_TEAM)
 		return
 	}
 
-	if channels, err := app.GetDeletedChannels(c.Params.TeamId, c.Params.Page*c.Params.PerPage, c.Params.PerPage); err != nil {
+	if channels, err := c.App.GetDeletedChannels(c.Params.TeamId, c.Params.Page*c.Params.PerPage, c.Params.PerPage); err != nil {
 		c.Err = err
 		return
 	} else {
@@ -456,12 +452,12 @@ func getPublicChannelsByIdsForTeam(c *Context, w http.ResponseWriter, r *http.Re
 		}
 	}
 
-	if !app.SessionHasPermissionToTeam(c.Session, c.Params.TeamId, model.PERMISSION_VIEW_TEAM) {
+	if !c.App.SessionHasPermissionToTeam(c.Session, c.Params.TeamId, model.PERMISSION_VIEW_TEAM) {
 		c.SetPermissionError(model.PERMISSION_VIEW_TEAM)
 		return
 	}
 
-	if channels, err := app.GetPublicChannelsByIdsForTeam(c.Params.TeamId, channelIds); err != nil {
+	if channels, err := c.App.GetPublicChannelsByIdsForTeam(c.Params.TeamId, channelIds); err != nil {
 		c.Err = err
 		return
 	} else {
@@ -475,20 +471,20 @@ func getChannelsForTeamForUser(c *Context, w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if !app.SessionHasPermissionToUser(c.Session, c.Params.UserId) {
+	if !c.App.SessionHasPermissionToUser(c.Session, c.Params.UserId) {
 		c.SetPermissionError(model.PERMISSION_EDIT_OTHER_USERS)
 		return
 	}
 
-	if !app.SessionHasPermissionToTeam(c.Session, c.Params.TeamId, model.PERMISSION_VIEW_TEAM) {
+	if !c.App.SessionHasPermissionToTeam(c.Session, c.Params.TeamId, model.PERMISSION_VIEW_TEAM) {
 		c.SetPermissionError(model.PERMISSION_VIEW_TEAM)
 		return
 	}
 
-	if channels, err := app.GetChannelsForUser(c.Params.TeamId, c.Params.UserId); err != nil {
+	if channels, err := c.App.GetChannelsForUser(c.Params.TeamId, c.Params.UserId); err != nil {
 		c.Err = err
 		return
-	} else if HandleEtag(channels.Etag(), "Get Channels", w, r) {
+	} else if c.HandleEtag(channels.Etag(), "Get Channels", w, r) {
 		return
 	} else {
 		w.Header().Set(model.HEADER_ETAG_SERVER, channels.Etag())
@@ -508,12 +504,12 @@ func searchChannelsForTeam(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !app.SessionHasPermissionToTeam(c.Session, c.Params.TeamId, model.PERMISSION_LIST_TEAM_CHANNELS) {
+	if !c.App.SessionHasPermissionToTeam(c.Session, c.Params.TeamId, model.PERMISSION_LIST_TEAM_CHANNELS) {
 		c.SetPermissionError(model.PERMISSION_LIST_TEAM_CHANNELS)
 		return
 	}
 
-	if channels, err := app.SearchChannels(c.Params.TeamId, props.Term); err != nil {
+	if channels, err := c.App.SearchChannels(c.Params.TeamId, props.Term); err != nil {
 		c.Err = err
 		return
 	} else {
@@ -529,29 +525,22 @@ func deleteChannel(c *Context, w http.ResponseWriter, r *http.Request) {
 
 	var channel *model.Channel
 	var err *model.AppError
-	if channel, err = app.GetChannel(c.Params.ChannelId); err != nil {
+	if channel, err = c.App.GetChannel(c.Params.ChannelId); err != nil {
 		c.Err = err
 		return
 	}
 
-	var memberCount int64
-	if memberCount, err = app.GetChannelMemberCount(c.Params.ChannelId); err != nil {
-		c.Err = err
-		return
-	}
-
-	if channel.Type == model.CHANNEL_OPEN && !app.SessionHasPermissionToChannel(c.Session, channel.Id, model.PERMISSION_DELETE_PUBLIC_CHANNEL) {
+	if channel.Type == model.CHANNEL_OPEN && !c.App.SessionHasPermissionToChannel(c.Session, channel.Id, model.PERMISSION_DELETE_PUBLIC_CHANNEL) {
 		c.SetPermissionError(model.PERMISSION_DELETE_PUBLIC_CHANNEL)
 		return
 	}
 
-	// Allow delete if there's only one member left in a private channel
-	if memberCount > 1 && channel.Type == model.CHANNEL_PRIVATE && !app.SessionHasPermissionToChannel(c.Session, channel.Id, model.PERMISSION_DELETE_PRIVATE_CHANNEL) {
+	if channel.Type == model.CHANNEL_PRIVATE && !c.App.SessionHasPermissionToChannel(c.Session, channel.Id, model.PERMISSION_DELETE_PRIVATE_CHANNEL) {
 		c.SetPermissionError(model.PERMISSION_DELETE_PRIVATE_CHANNEL)
 		return
 	}
 
-	err = app.DeleteChannel(channel, c.Session.UserId)
+	err = c.App.DeleteChannel(channel, c.Session.UserId)
 	if err != nil {
 		c.Err = err
 		return
@@ -571,18 +560,18 @@ func getChannelByName(c *Context, w http.ResponseWriter, r *http.Request) {
 	var channel *model.Channel
 	var err *model.AppError
 
-	if channel, err = app.GetChannelByName(c.Params.ChannelName, c.Params.TeamId); err != nil {
+	if channel, err = c.App.GetChannelByName(c.Params.ChannelName, c.Params.TeamId); err != nil {
 		c.Err = err
 		return
 	}
 
 	if channel.Type == model.CHANNEL_OPEN {
-		if !app.SessionHasPermissionToTeam(c.Session, channel.TeamId, model.PERMISSION_READ_PUBLIC_CHANNEL) {
+		if !c.App.SessionHasPermissionToTeam(c.Session, channel.TeamId, model.PERMISSION_READ_PUBLIC_CHANNEL) {
 			c.SetPermissionError(model.PERMISSION_READ_PUBLIC_CHANNEL)
 			return
 		}
 	} else {
-		if !app.SessionHasPermissionToChannel(c.Session, channel.Id, model.PERMISSION_READ_CHANNEL) {
+		if !c.App.SessionHasPermissionToChannel(c.Session, channel.Id, model.PERMISSION_READ_CHANNEL) {
 			c.SetPermissionError(model.PERMISSION_READ_CHANNEL)
 			return
 		}
@@ -600,18 +589,17 @@ func getChannelByNameForTeamName(c *Context, w http.ResponseWriter, r *http.Requ
 	var channel *model.Channel
 	var err *model.AppError
 
-	if channel, err = app.GetChannelByNameForTeamName(c.Params.ChannelName, c.Params.TeamName); err != nil {
+	if channel, err = c.App.GetChannelByNameForTeamName(c.Params.ChannelName, c.Params.TeamName); err != nil {
 		c.Err = err
 		return
 	}
 
-	if !app.SessionHasPermissionToChannel(c.Session, channel.Id, model.PERMISSION_READ_CHANNEL) {
+	if !c.App.SessionHasPermissionToChannel(c.Session, channel.Id, model.PERMISSION_READ_CHANNEL) {
 		c.SetPermissionError(model.PERMISSION_READ_CHANNEL)
 		return
 	}
 
 	w.Write([]byte(channel.ToJson()))
-	return
 }
 
 func getChannelMembers(c *Context, w http.ResponseWriter, r *http.Request) {
@@ -620,12 +608,12 @@ func getChannelMembers(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !app.SessionHasPermissionToChannel(c.Session, c.Params.ChannelId, model.PERMISSION_READ_CHANNEL) {
+	if !c.App.SessionHasPermissionToChannel(c.Session, c.Params.ChannelId, model.PERMISSION_READ_CHANNEL) {
 		c.SetPermissionError(model.PERMISSION_READ_CHANNEL)
 		return
 	}
 
-	if members, err := app.GetChannelMembersPage(c.Params.ChannelId, c.Params.Page, c.Params.PerPage); err != nil {
+	if members, err := c.App.GetChannelMembersPage(c.Params.ChannelId, c.Params.Page, c.Params.PerPage); err != nil {
 		c.Err = err
 		return
 	} else {
@@ -645,12 +633,12 @@ func getChannelMembersByIds(c *Context, w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if !app.SessionHasPermissionToChannel(c.Session, c.Params.ChannelId, model.PERMISSION_READ_CHANNEL) {
+	if !c.App.SessionHasPermissionToChannel(c.Session, c.Params.ChannelId, model.PERMISSION_READ_CHANNEL) {
 		c.SetPermissionError(model.PERMISSION_READ_CHANNEL)
 		return
 	}
 
-	if members, err := app.GetChannelMembersByIds(c.Params.ChannelId, userIds); err != nil {
+	if members, err := c.App.GetChannelMembersByIds(c.Params.ChannelId, userIds); err != nil {
 		c.Err = err
 		return
 	} else {
@@ -664,12 +652,12 @@ func getChannelMember(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !app.SessionHasPermissionToChannel(c.Session, c.Params.ChannelId, model.PERMISSION_READ_CHANNEL) {
+	if !c.App.SessionHasPermissionToChannel(c.Session, c.Params.ChannelId, model.PERMISSION_READ_CHANNEL) {
 		c.SetPermissionError(model.PERMISSION_READ_CHANNEL)
 		return
 	}
 
-	if member, err := app.GetChannelMember(c.Params.ChannelId, c.Params.UserId); err != nil {
+	if member, err := c.App.GetChannelMember(c.Params.ChannelId, c.Params.UserId); err != nil {
 		c.Err = err
 		return
 	} else {
@@ -683,17 +671,17 @@ func getChannelMembersForUser(c *Context, w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if !app.SessionHasPermissionToTeam(c.Session, c.Params.TeamId, model.PERMISSION_VIEW_TEAM) {
+	if !c.App.SessionHasPermissionToTeam(c.Session, c.Params.TeamId, model.PERMISSION_VIEW_TEAM) {
 		c.SetPermissionError(model.PERMISSION_VIEW_TEAM)
 		return
 	}
 
-	if c.Session.UserId != c.Params.UserId && !app.SessionHasPermissionToTeam(c.Session, c.Params.TeamId, model.PERMISSION_MANAGE_SYSTEM) {
+	if c.Session.UserId != c.Params.UserId && !c.App.SessionHasPermissionToTeam(c.Session, c.Params.TeamId, model.PERMISSION_MANAGE_SYSTEM) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_SYSTEM)
 		return
 	}
 
-	if members, err := app.GetChannelMembersForUser(c.Params.TeamId, c.Params.UserId); err != nil {
+	if members, err := c.App.GetChannelMembersForUser(c.Params.TeamId, c.Params.UserId); err != nil {
 		c.Err = err
 		return
 	} else {
@@ -707,7 +695,7 @@ func viewChannel(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !app.SessionHasPermissionToUser(c.Session, c.Params.UserId) {
+	if !c.App.SessionHasPermissionToUser(c.Session, c.Params.UserId) {
 		c.SetPermissionError(model.PERMISSION_EDIT_OTHER_USERS)
 		return
 	}
@@ -718,12 +706,22 @@ func viewChannel(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := app.ViewChannel(view, c.Params.UserId, !c.Session.IsMobileApp()); err != nil {
+	times, err := c.App.ViewChannel(view, c.Params.UserId, !c.Session.IsMobileApp())
+
+	if err != nil {
 		c.Err = err
 		return
 	}
 
-	ReturnStatusOK(w)
+	c.App.UpdateLastActivityAtIfNeeded(c.Session)
+
+	// Returning {"status": "OK", ...} for backwards compatability
+	resp := &model.ChannelViewResponse{
+		Status:            "OK",
+		LastViewedAtTimes: times,
+	}
+
+	w.Write([]byte(resp.ToJson()))
 }
 
 func updateChannelMemberRoles(c *Context, w http.ResponseWriter, r *http.Request) {
@@ -740,12 +738,12 @@ func updateChannelMemberRoles(c *Context, w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if !app.SessionHasPermissionToChannel(c.Session, c.Params.ChannelId, model.PERMISSION_MANAGE_CHANNEL_ROLES) {
+	if !c.App.SessionHasPermissionToChannel(c.Session, c.Params.ChannelId, model.PERMISSION_MANAGE_CHANNEL_ROLES) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_CHANNEL_ROLES)
 		return
 	}
 
-	if _, err := app.UpdateChannelMemberRoles(c.Params.ChannelId, c.Params.UserId, newRoles); err != nil {
+	if _, err := c.App.UpdateChannelMemberRoles(c.Params.ChannelId, c.Params.UserId, newRoles); err != nil {
 		c.Err = err
 		return
 	}
@@ -765,12 +763,12 @@ func updateChannelMemberNotifyProps(c *Context, w http.ResponseWriter, r *http.R
 		return
 	}
 
-	if !app.SessionHasPermissionToUser(c.Session, c.Params.UserId) {
+	if !c.App.SessionHasPermissionToUser(c.Session, c.Params.UserId) {
 		c.SetPermissionError(model.PERMISSION_EDIT_OTHER_USERS)
 		return
 	}
 
-	_, err := app.UpdateChannelMemberNotifyProps(props, c.Params.ChannelId, c.Params.UserId)
+	_, err := c.App.UpdateChannelMemberNotifyProps(props, c.Params.ChannelId, c.Params.UserId)
 	if err != nil {
 		c.Err = err
 		return
@@ -785,22 +783,37 @@ func addChannelMember(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	member := model.ChannelMemberFromJson(r.Body)
-	if member == nil {
-		c.SetInvalidParam("channel_member")
-		return
-	}
-
-	if len(member.UserId) != 26 {
+	props := model.StringInterfaceFromJson(r.Body)
+	userId, ok := props["user_id"].(string)
+	if !ok || len(userId) != 26 {
 		c.SetInvalidParam("user_id")
 		return
 	}
 
-	member.ChannelId = c.Params.ChannelId
+	member := &model.ChannelMember{
+		ChannelId: c.Params.ChannelId,
+		UserId:    userId,
+	}
+
+	postRootId, ok := props["post_root_id"].(string)
+	if ok && len(postRootId) != 0 && len(postRootId) != 26 {
+		c.SetInvalidParam("post_root_id")
+		return
+	}
+
+	var err *model.AppError
+	if ok && len(postRootId) == 26 {
+		if rootPost, err := c.App.GetSinglePost(postRootId); err != nil {
+			c.Err = err
+			return
+		} else if rootPost.ChannelId != member.ChannelId {
+			c.SetInvalidParam("post_root_id")
+			return
+		}
+	}
 
 	var channel *model.Channel
-	var err *model.AppError
-	if channel, err = app.GetChannel(member.ChannelId); err != nil {
+	if channel, err = c.App.GetChannel(member.ChannelId); err != nil {
 		c.Err = err
 		return
 	}
@@ -808,24 +821,29 @@ func addChannelMember(c *Context, w http.ResponseWriter, r *http.Request) {
 	// Check join permission if adding yourself, otherwise check manage permission
 	if channel.Type == model.CHANNEL_OPEN {
 		if member.UserId == c.Session.UserId {
-			if !app.SessionHasPermissionToChannel(c.Session, channel.Id, model.PERMISSION_JOIN_PUBLIC_CHANNELS) {
+			if !c.App.SessionHasPermissionToChannel(c.Session, channel.Id, model.PERMISSION_JOIN_PUBLIC_CHANNELS) {
 				c.SetPermissionError(model.PERMISSION_JOIN_PUBLIC_CHANNELS)
 				return
 			}
 		} else {
-			if !app.SessionHasPermissionToChannel(c.Session, channel.Id, model.PERMISSION_MANAGE_PUBLIC_CHANNEL_MEMBERS) {
+			if !c.App.SessionHasPermissionToChannel(c.Session, channel.Id, model.PERMISSION_MANAGE_PUBLIC_CHANNEL_MEMBERS) {
 				c.SetPermissionError(model.PERMISSION_MANAGE_PUBLIC_CHANNEL_MEMBERS)
 				return
 			}
 		}
 	}
 
-	if channel.Type == model.CHANNEL_PRIVATE && !app.SessionHasPermissionToChannel(c.Session, channel.Id, model.PERMISSION_MANAGE_PRIVATE_CHANNEL_MEMBERS) {
+	if channel.Type == model.CHANNEL_PRIVATE && !c.App.SessionHasPermissionToChannel(c.Session, channel.Id, model.PERMISSION_MANAGE_PRIVATE_CHANNEL_MEMBERS) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_PRIVATE_CHANNEL_MEMBERS)
 		return
 	}
 
-	if cm, err := app.AddChannelMember(member.UserId, channel, c.Session.UserId); err != nil {
+	if channel.Type == model.CHANNEL_DIRECT || channel.Type == model.CHANNEL_GROUP {
+		c.Err = model.NewAppError("addUserToChannel", "api.channel.add_user_to_channel.type.app_error", nil, "", http.StatusBadRequest)
+		return
+	}
+
+	if cm, err := c.App.AddChannelMember(member.UserId, channel, c.Session.UserId, postRootId); err != nil {
 		c.Err = err
 		return
 	} else {
@@ -843,24 +861,24 @@ func removeChannelMember(c *Context, w http.ResponseWriter, r *http.Request) {
 
 	var channel *model.Channel
 	var err *model.AppError
-	if channel, err = app.GetChannel(c.Params.ChannelId); err != nil {
+	if channel, err = c.App.GetChannel(c.Params.ChannelId); err != nil {
 		c.Err = err
 		return
 	}
 
 	if c.Params.UserId != c.Session.UserId {
-		if channel.Type == model.CHANNEL_OPEN && !app.SessionHasPermissionToChannel(c.Session, channel.Id, model.PERMISSION_MANAGE_PUBLIC_CHANNEL_MEMBERS) {
+		if channel.Type == model.CHANNEL_OPEN && !c.App.SessionHasPermissionToChannel(c.Session, channel.Id, model.PERMISSION_MANAGE_PUBLIC_CHANNEL_MEMBERS) {
 			c.SetPermissionError(model.PERMISSION_MANAGE_PUBLIC_CHANNEL_MEMBERS)
 			return
 		}
 
-		if channel.Type == model.CHANNEL_PRIVATE && !app.SessionHasPermissionToChannel(c.Session, channel.Id, model.PERMISSION_MANAGE_PRIVATE_CHANNEL_MEMBERS) {
+		if channel.Type == model.CHANNEL_PRIVATE && !c.App.SessionHasPermissionToChannel(c.Session, channel.Id, model.PERMISSION_MANAGE_PRIVATE_CHANNEL_MEMBERS) {
 			c.SetPermissionError(model.PERMISSION_MANAGE_PRIVATE_CHANNEL_MEMBERS)
 			return
 		}
 	}
 
-	if err = app.RemoveUserFromChannel(c.Params.UserId, c.Session.UserId, channel); err != nil {
+	if err = c.App.RemoveUserFromChannel(c.Params.UserId, c.Session.UserId, channel); err != nil {
 		c.Err = err
 		return
 	}

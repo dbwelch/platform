@@ -3,13 +3,12 @@ package api4
 import (
 	"testing"
 
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/model"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 func TestGetUserStatus(t *testing.T) {
 	th := Setup().InitBasic()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	userStatus, resp := Client.GetUserStatus(th.BasicUser.Id, "")
@@ -18,21 +17,28 @@ func TestGetUserStatus(t *testing.T) {
 		t.Fatal("Should return offline status")
 	}
 
-	app.SetStatusOnline(th.BasicUser.Id, "", true)
+	th.App.SetStatusOnline(th.BasicUser.Id, "", true)
 	userStatus, resp = Client.GetUserStatus(th.BasicUser.Id, "")
 	CheckNoError(t, resp)
 	if userStatus.Status != "online" {
 		t.Fatal("Should return online status")
 	}
 
-	app.SetStatusAwayIfNeeded(th.BasicUser.Id, true)
+	th.App.SetStatusAwayIfNeeded(th.BasicUser.Id, true)
 	userStatus, resp = Client.GetUserStatus(th.BasicUser.Id, "")
 	CheckNoError(t, resp)
 	if userStatus.Status != "away" {
 		t.Fatal("Should return away status")
 	}
 
-	app.SetStatusOffline(th.BasicUser.Id, true)
+	th.App.SetStatusDoNotDisturb(th.BasicUser.Id)
+	userStatus, resp = Client.GetUserStatus(th.BasicUser.Id, "")
+	CheckNoError(t, resp)
+	if userStatus.Status != "dnd" {
+		t.Fatal("Should return dnd status")
+	}
+
+	th.App.SetStatusOffline(th.BasicUser.Id, true)
 	userStatus, resp = Client.GetUserStatus(th.BasicUser.Id, "")
 	CheckNoError(t, resp)
 	if userStatus.Status != "offline" {
@@ -47,6 +53,10 @@ func TestGetUserStatus(t *testing.T) {
 	}
 
 	Client.Logout()
+
+	_, resp = Client.GetUserStatus(th.BasicUser2.Id, "")
+	CheckUnauthorizedStatus(t, resp)
+
 	th.LoginBasic2()
 	userStatus, resp = Client.GetUserStatus(th.BasicUser2.Id, "")
 	CheckNoError(t, resp)
@@ -57,7 +67,7 @@ func TestGetUserStatus(t *testing.T) {
 
 func TestGetUsersStatusesByIds(t *testing.T) {
 	th := Setup().InitBasic()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	usersIds := []string{th.BasicUser.Id, th.BasicUser2.Id}
@@ -70,8 +80,8 @@ func TestGetUsersStatusesByIds(t *testing.T) {
 		}
 	}
 
-	app.SetStatusOnline(th.BasicUser.Id, "", true)
-	app.SetStatusOnline(th.BasicUser2.Id, "", true)
+	th.App.SetStatusOnline(th.BasicUser.Id, "", true)
+	th.App.SetStatusOnline(th.BasicUser2.Id, "", true)
 	usersStatuses, resp = Client.GetUsersStatusesByIds(usersIds)
 	CheckNoError(t, resp)
 	for _, userStatus := range usersStatuses {
@@ -80,8 +90,8 @@ func TestGetUsersStatusesByIds(t *testing.T) {
 		}
 	}
 
-	app.SetStatusAwayIfNeeded(th.BasicUser.Id, true)
-	app.SetStatusAwayIfNeeded(th.BasicUser2.Id, true)
+	th.App.SetStatusAwayIfNeeded(th.BasicUser.Id, true)
+	th.App.SetStatusAwayIfNeeded(th.BasicUser2.Id, true)
 	usersStatuses, resp = Client.GetUsersStatusesByIds(usersIds)
 	CheckNoError(t, resp)
 	for _, userStatus := range usersStatuses {
@@ -89,11 +99,26 @@ func TestGetUsersStatusesByIds(t *testing.T) {
 			t.Fatal("Status should be offline")
 		}
 	}
+
+	th.App.SetStatusDoNotDisturb(th.BasicUser.Id)
+	th.App.SetStatusDoNotDisturb(th.BasicUser2.Id)
+	usersStatuses, resp = Client.GetUsersStatusesByIds(usersIds)
+	CheckNoError(t, resp)
+	for _, userStatus := range usersStatuses {
+		if userStatus.Status != "dnd" {
+			t.Fatal("Status should be offline")
+		}
+	}
+
+	Client.Logout()
+
+	_, resp = Client.GetUsersStatusesByIds(usersIds)
+	CheckUnauthorizedStatus(t, resp)
 }
 
 func TestUpdateUserStatus(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	toUpdateUserStatus := &model.Status{Status: "online"}
@@ -108,6 +133,13 @@ func TestUpdateUserStatus(t *testing.T) {
 	CheckNoError(t, resp)
 	if updateUserStatus.Status != "away" {
 		t.Fatal("Should return away status")
+	}
+
+	toUpdateUserStatus.Status = "dnd"
+	updateUserStatus, resp = Client.UpdateUserStatus(th.BasicUser.Id, toUpdateUserStatus)
+	CheckNoError(t, resp)
+	if updateUserStatus.Status != "dnd" {
+		t.Fatal("Should return dnd status")
 	}
 
 	toUpdateUserStatus.Status = "offline"
@@ -126,4 +158,9 @@ func TestUpdateUserStatus(t *testing.T) {
 	if updateUserStatus.Status != "online" {
 		t.Fatal("Should return online status")
 	}
+
+	Client.Logout()
+
+	_, resp = Client.UpdateUserStatus(th.BasicUser2.Id, toUpdateUserStatus)
+	CheckUnauthorizedStatus(t, resp)
 }

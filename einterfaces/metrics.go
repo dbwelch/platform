@@ -37,14 +37,7 @@ type MetricsInterface interface {
 
 	AddMemCacheHitCounter(cacheName string, amount float64)
 	AddMemCacheMissCounter(cacheName string, amount float64)
-}
 
-var theMetricsInterface MetricsInterface
-
-func RegisterMetricsInterface(newInterface MetricsInterface) {
-	theMetricsInterface = newInterface
-}
-
-func GetMetricsInterface() MetricsInterface {
-	return theMetricsInterface
+	IncrementPostsSearchCounter()
+	ObservePostsSearchDuration(elapsed float64)
 }

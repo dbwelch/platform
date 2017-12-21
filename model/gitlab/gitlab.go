@@ -5,11 +5,12 @@ package oauthgitlab
 
 import (
 	"encoding/json"
-	"github.com/mattermost/platform/einterfaces"
-	"github.com/mattermost/platform/model"
 	"io"
 	"strconv"
 	"strings"
+
+	"github.com/mattermost/mattermost-server/einterfaces"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 type GitLabProvider struct {
@@ -45,7 +46,6 @@ func userFromGitLabUser(glu *GitLabUser) *model.User {
 	} else {
 		user.FirstName = glu.Name
 	}
-	strings.TrimSpace(user.Email)
 	user.Email = glu.Email
 	userId := strconv.FormatInt(glu.Id, 10)
 	user.AuthData = &userId

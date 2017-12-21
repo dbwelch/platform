@@ -7,11 +7,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mattermost/platform/model"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 func TestStatusCommands(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
+
 	commandAndTest(t, th, "away")
 	commandAndTest(t, th, "offline")
 	commandAndTest(t, th, "online")

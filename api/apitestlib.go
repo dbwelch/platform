@@ -4,19 +4,28 @@
 package api
 
 import (
+	"fmt"
+	"net"
+	"os"
+	"strings"
 	"time"
 
-	"github.com/mattermost/platform/api4"
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/store"
-	"github.com/mattermost/platform/utils"
-	"github.com/mattermost/platform/wsapi"
+	"github.com/mattermost/mattermost-server/api4"
+	"github.com/mattermost/mattermost-server/app"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/store"
+	"github.com/mattermost/mattermost-server/store/sqlstore"
+	"github.com/mattermost/mattermost-server/store/storetest"
+	"github.com/mattermost/mattermost-server/utils"
+	"github.com/mattermost/mattermost-server/wsapi"
 
 	l4g "github.com/alecthomas/log4go"
 )
 
 type TestHelper struct {
+	App            *app.App
+	originalConfig *model.Config
+
 	BasicClient  *model.Client
 	BasicTeam    *model.Team
 	BasicUser    *model.User
@@ -31,83 +40,88 @@ type TestHelper struct {
 	SystemAdminChannel *model.Channel
 }
 
-func SetupEnterprise() *TestHelper {
-	if app.Srv == nil {
-		utils.TranslationsPreInit()
-		utils.LoadConfig("config.json")
-		utils.InitTranslations(utils.Cfg.LocalizationSettings)
-		utils.Cfg.TeamSettings.MaxUsersPerTeam = 50
-		*utils.Cfg.RateLimitSettings.Enable = false
-		utils.DisableDebugLogForTest()
-		utils.License.Features.SetDefaults()
-		app.NewServer()
-		app.InitStores()
-		InitRouter()
-		wsapi.InitRouter()
-		app.StartServer()
-		utils.InitHTML()
-		api4.InitApi(false)
-		InitApi()
-		wsapi.InitApi()
-		utils.EnableDebugLogForTest()
-		app.Srv.Store.MarkSystemRanUnitTests()
+type persistentTestStore struct {
+	store.Store
+}
 
-		*utils.Cfg.TeamSettings.EnableOpenServer = true
+func (*persistentTestStore) Close() {}
+
+var testStoreContainer *storetest.RunningContainer
+var testStore *persistentTestStore
+
+// UseTestStore sets the container and corresponding settings to use for tests. Once the tests are
+// complete (e.g. at the end of your TestMain implementation), you should call StopTestStore.
+func UseTestStore(container *storetest.RunningContainer, settings *model.SqlSettings) {
+	testStoreContainer = container
+	testStore = &persistentTestStore{store.NewLayeredStore(sqlstore.NewSqlSupplier(*settings, nil), nil, nil)}
+}
+
+func StopTestStore() {
+	if testStoreContainer != nil {
+		testStoreContainer.Stop()
+		testStoreContainer = nil
+	}
+}
+
+func setupTestHelper(enterprise bool) *TestHelper {
+	var options []app.Option
+	if testStore != nil {
+		options = append(options, app.StoreOverride(testStore))
 	}
 
-	return &TestHelper{}
+	th := &TestHelper{
+		App: app.New(options...),
+	}
+	th.originalConfig = th.App.Config().Clone()
+
+	th.App.UpdateConfig(func(cfg *model.Config) {
+		*cfg.TeamSettings.MaxUsersPerTeam = 50
+		*cfg.RateLimitSettings.Enable = false
+		cfg.EmailSettings.SendEmailNotifications = true
+	})
+	utils.DisableDebugLogForTest()
+	prevListenAddress := *th.App.Config().ServiceSettings.ListenAddress
+	if testStore != nil {
+		th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.ListenAddress = ":0" })
+	}
+	th.App.StartServer()
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.ListenAddress = prevListenAddress })
+	api4.Init(th.App, th.App.Srv.Router, false)
+	Init(th.App, th.App.Srv.Router)
+	wsapi.Init(th.App, th.App.Srv.WebSocketRouter)
+	utils.EnableDebugLogForTest()
+	th.App.Srv.Store.MarkSystemRanUnitTests()
+
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.TeamSettings.EnableOpenServer = true })
+
+	utils.SetIsLicensed(enterprise)
+	if enterprise {
+		utils.License().Features.SetDefaults()
+	}
+
+	return th
+}
+
+func SetupEnterprise() *TestHelper {
+	return setupTestHelper(true)
 }
 
 func Setup() *TestHelper {
-	if app.Srv == nil {
-		utils.TranslationsPreInit()
-		utils.LoadConfig("config.json")
-		utils.InitTranslations(utils.Cfg.LocalizationSettings)
-		utils.Cfg.TeamSettings.MaxUsersPerTeam = 50
-		*utils.Cfg.RateLimitSettings.Enable = false
-		utils.Cfg.EmailSettings.SendEmailNotifications = true
-		utils.Cfg.EmailSettings.SMTPServer = "dockerhost"
-		utils.Cfg.EmailSettings.SMTPPort = "2500"
-		utils.Cfg.EmailSettings.FeedbackEmail = "test@example.com"
-		utils.DisableDebugLogForTest()
-		app.NewServer()
-		app.InitStores()
-		InitRouter()
-		wsapi.InitRouter()
-		app.StartServer()
-		api4.InitApi(false)
-		InitApi()
-		wsapi.InitApi()
-		utils.EnableDebugLogForTest()
-		app.Srv.Store.MarkSystemRanUnitTests()
-
-		*utils.Cfg.TeamSettings.EnableOpenServer = true
-	}
-
-	return &TestHelper{}
-}
-
-func ReloadConfigForSetup() {
-	utils.LoadConfig("config.json")
-	utils.InitTranslations(utils.Cfg.LocalizationSettings)
-	utils.Cfg.TeamSettings.MaxUsersPerTeam = 50
-	*utils.Cfg.RateLimitSettings.Enable = false
-	utils.Cfg.EmailSettings.SendEmailNotifications = true
-	utils.Cfg.EmailSettings.SMTPServer = "dockerhost"
-	utils.Cfg.EmailSettings.SMTPPort = "2500"
-	utils.Cfg.EmailSettings.FeedbackEmail = "test@example.com"
-	*utils.Cfg.TeamSettings.EnableOpenServer = true
+	return setupTestHelper(false)
 }
 
 func (me *TestHelper) InitBasic() *TestHelper {
+	me.waitForConnectivity()
+
 	me.BasicClient = me.CreateClient()
 	me.BasicUser = me.CreateUser(me.BasicClient)
+	me.App.UpdateUserRoles(me.BasicUser.Id, model.SYSTEM_USER_ROLE_ID, false)
 	me.LoginBasic()
 	me.BasicTeam = me.CreateTeam(me.BasicClient)
-	LinkUserToTeam(me.BasicUser, me.BasicTeam)
-	UpdateUserToNonTeamAdmin(me.BasicUser, me.BasicTeam)
+	me.LinkUserToTeam(me.BasicUser, me.BasicTeam)
+	me.UpdateUserToNonTeamAdmin(me.BasicUser, me.BasicTeam)
 	me.BasicUser2 = me.CreateUser(me.BasicClient)
-	LinkUserToTeam(me.BasicUser2, me.BasicTeam)
+	me.LinkUserToTeam(me.BasicUser2, me.BasicTeam)
 	me.BasicClient.SetTeamId(me.BasicTeam.Id)
 	me.BasicChannel = me.CreateChannel(me.BasicClient, me.BasicTeam)
 	me.BasicPost = me.CreatePost(me.BasicClient, me.BasicChannel)
@@ -119,33 +133,47 @@ func (me *TestHelper) InitBasic() *TestHelper {
 }
 
 func (me *TestHelper) InitSystemAdmin() *TestHelper {
+	me.waitForConnectivity()
+
 	me.SystemAdminClient = me.CreateClient()
 	me.SystemAdminUser = me.CreateUser(me.SystemAdminClient)
 	me.SystemAdminUser.Password = "Password1"
 	me.LoginSystemAdmin()
 	me.SystemAdminTeam = me.CreateTeam(me.SystemAdminClient)
-	LinkUserToTeam(me.SystemAdminUser, me.SystemAdminTeam)
+	me.LinkUserToTeam(me.SystemAdminUser, me.SystemAdminTeam)
 	me.SystemAdminClient.SetTeamId(me.SystemAdminTeam.Id)
-	app.UpdateUserRoles(me.SystemAdminUser.Id, model.ROLE_SYSTEM_USER.Id+" "+model.ROLE_SYSTEM_ADMIN.Id)
+	me.App.UpdateUserRoles(me.SystemAdminUser.Id, model.SYSTEM_USER_ROLE_ID+" "+model.SYSTEM_ADMIN_ROLE_ID, false)
 	me.SystemAdminChannel = me.CreateChannel(me.SystemAdminClient, me.SystemAdminTeam)
 
 	return me
 }
 
+func (me *TestHelper) waitForConnectivity() {
+	for i := 0; i < 1000; i++ {
+		conn, err := net.Dial("tcp", fmt.Sprintf("localhost:%v", me.App.Srv.ListenAddr.Port))
+		if err == nil {
+			conn.Close()
+			return
+		}
+		time.Sleep(time.Millisecond * 20)
+	}
+	panic("unable to connect")
+}
+
 func (me *TestHelper) CreateClient() *model.Client {
-	return model.NewClient("http://localhost" + utils.Cfg.ServiceSettings.ListenAddress)
+	return model.NewClient(fmt.Sprintf("http://localhost:%v", me.App.Srv.ListenAddr.Port))
 }
 
 func (me *TestHelper) CreateWebSocketClient() (*model.WebSocketClient, *model.AppError) {
-	return model.NewWebSocketClient("ws://localhost"+utils.Cfg.ServiceSettings.ListenAddress, me.BasicClient.AuthToken)
+	return model.NewWebSocketClient(fmt.Sprintf("ws://localhost:%v", me.App.Srv.ListenAddr.Port), me.BasicClient.AuthToken)
 }
 
 func (me *TestHelper) CreateTeam(client *model.Client) *model.Team {
 	id := model.NewId()
 	team := &model.Team{
 		DisplayName: "dn_" + id,
-		Name:        "name" + id,
-		Email:       "success+" + id + "@simulator.amazonses.com",
+		Name:        GenerateTestTeamName(),
+		Email:       GenerateTestEmail(),
 		Type:        model.TEAM_OPEN,
 	}
 
@@ -159,7 +187,7 @@ func (me *TestHelper) CreateUser(client *model.Client) *model.User {
 	id := model.NewId()
 
 	user := &model.User{
-		Email:    "success+" + id + "@simulator.amazonses.com",
+		Email:    GenerateTestEmail(),
 		Username: "un_" + id,
 		Nickname: "nn_" + id,
 		Password: "Password1",
@@ -168,15 +196,15 @@ func (me *TestHelper) CreateUser(client *model.Client) *model.User {
 	utils.DisableDebugLogForTest()
 	ruser := client.Must(client.CreateUser(user, "")).Data.(*model.User)
 	ruser.Password = "Password1"
-	store.Must(app.Srv.Store.User().VerifyEmail(ruser.Id))
+	store.Must(me.App.Srv.Store.User().VerifyEmail(ruser.Id))
 	utils.EnableDebugLogForTest()
 	return ruser
 }
 
-func LinkUserToTeam(user *model.User, team *model.Team) {
+func (me *TestHelper) LinkUserToTeam(user *model.User, team *model.Team) {
 	utils.DisableDebugLogForTest()
 
-	err := app.JoinUserToTeam(team, user, "")
+	err := me.App.JoinUserToTeam(team, user, "")
 	if err != nil {
 		l4g.Error(err.Error())
 		l4g.Close()
@@ -187,11 +215,11 @@ func LinkUserToTeam(user *model.User, team *model.Team) {
 	utils.EnableDebugLogForTest()
 }
 
-func UpdateUserToTeamAdmin(user *model.User, team *model.Team) {
+func (me *TestHelper) UpdateUserToTeamAdmin(user *model.User, team *model.Team) {
 	utils.DisableDebugLogForTest()
 
-	tm := &model.TeamMember{TeamId: team.Id, UserId: user.Id, Roles: model.ROLE_TEAM_USER.Id + " " + model.ROLE_TEAM_ADMIN.Id}
-	if tmr := <-app.Srv.Store.Team().UpdateMember(tm); tmr.Err != nil {
+	tm := &model.TeamMember{TeamId: team.Id, UserId: user.Id, Roles: model.TEAM_USER_ROLE_ID + " " + model.TEAM_ADMIN_ROLE_ID}
+	if tmr := <-me.App.Srv.Store.Team().UpdateMember(tm); tmr.Err != nil {
 		utils.EnableDebugLogForTest()
 		l4g.Error(tmr.Err.Error())
 		l4g.Close()
@@ -201,11 +229,11 @@ func UpdateUserToTeamAdmin(user *model.User, team *model.Team) {
 	utils.EnableDebugLogForTest()
 }
 
-func UpdateUserToNonTeamAdmin(user *model.User, team *model.Team) {
+func (me *TestHelper) UpdateUserToNonTeamAdmin(user *model.User, team *model.Team) {
 	utils.DisableDebugLogForTest()
 
-	tm := &model.TeamMember{TeamId: team.Id, UserId: user.Id, Roles: model.ROLE_TEAM_USER.Id}
-	if tmr := <-app.Srv.Store.Team().UpdateMember(tm); tmr.Err != nil {
+	tm := &model.TeamMember{TeamId: team.Id, UserId: user.Id, Roles: model.TEAM_USER_ROLE_ID}
+	if tmr := <-me.App.Srv.Store.Team().UpdateMember(tm); tmr.Err != nil {
 		utils.EnableDebugLogForTest()
 		l4g.Error(tmr.Err.Error())
 		l4g.Close()
@@ -215,13 +243,13 @@ func UpdateUserToNonTeamAdmin(user *model.User, team *model.Team) {
 	utils.EnableDebugLogForTest()
 }
 
-func MakeUserChannelAdmin(user *model.User, channel *model.Channel) {
+func (me *TestHelper) MakeUserChannelAdmin(user *model.User, channel *model.Channel) {
 	utils.DisableDebugLogForTest()
 
-	if cmr := <-app.Srv.Store.Channel().GetMember(channel.Id, user.Id); cmr.Err == nil {
+	if cmr := <-me.App.Srv.Store.Channel().GetMember(channel.Id, user.Id); cmr.Err == nil {
 		cm := cmr.Data.(*model.ChannelMember)
 		cm.Roles = "channel_admin channel_user"
-		if sr := <-app.Srv.Store.Channel().UpdateMember(cm); sr.Err != nil {
+		if sr := <-me.App.Srv.Store.Channel().UpdateMember(cm); sr.Err != nil {
 			utils.EnableDebugLogForTest()
 			panic(sr.Err)
 		}
@@ -233,13 +261,13 @@ func MakeUserChannelAdmin(user *model.User, channel *model.Channel) {
 	utils.EnableDebugLogForTest()
 }
 
-func MakeUserChannelUser(user *model.User, channel *model.Channel) {
+func (me *TestHelper) MakeUserChannelUser(user *model.User, channel *model.Channel) {
 	utils.DisableDebugLogForTest()
 
-	if cmr := <-app.Srv.Store.Channel().GetMember(channel.Id, user.Id); cmr.Err == nil {
+	if cmr := <-me.App.Srv.Store.Channel().GetMember(channel.Id, user.Id); cmr.Err == nil {
 		cm := cmr.Data.(*model.ChannelMember)
 		cm.Roles = "channel_user"
-		if sr := <-app.Srv.Store.Channel().UpdateMember(cm); sr.Err != nil {
+		if sr := <-me.App.Srv.Store.Channel().UpdateMember(cm); sr.Err != nil {
 			utils.EnableDebugLogForTest()
 			panic(sr.Err)
 		}
@@ -322,8 +350,25 @@ func (me *TestHelper) LoginSystemAdmin() {
 	utils.EnableDebugLogForTest()
 }
 
-func TearDown() {
-	if app.Srv != nil {
-		app.StopServer()
+func GenerateTestEmail() string {
+	if utils.Cfg.EmailSettings.SMTPServer != "dockerhost" && os.Getenv("CI_INBUCKET_PORT") == "" {
+		return strings.ToLower("success+" + model.NewId() + "@simulator.amazonses.com")
+	}
+	return strings.ToLower(model.NewId() + "@dockerhost")
+}
+
+func GenerateTestTeamName() string {
+	return "faketeam" + model.NewRandomString(6)
+}
+
+func (me *TestHelper) TearDown() {
+	me.App.UpdateConfig(func(cfg *model.Config) {
+		*cfg = *me.originalConfig
+	})
+
+	me.App.Shutdown()
+	if err := recover(); err != nil {
+		StopTestStore()
+		panic(err)
 	}
 }

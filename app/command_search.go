@@ -4,7 +4,7 @@
 package app
 
 import (
-	"github.com/mattermost/platform/model"
+	"github.com/mattermost/mattermost-server/model"
 	goi18n "github.com/nicksnyder/go-i18n/i18n"
 )
 
@@ -23,7 +23,7 @@ func (search *SearchProvider) GetTrigger() string {
 	return CMD_SEARCH
 }
 
-func (search *SearchProvider) GetCommand(T goi18n.TranslateFunc) *model.Command {
+func (search *SearchProvider) GetCommand(a *App, T goi18n.TranslateFunc) *model.Command {
 	return &model.Command{
 		Trigger:          CMD_SEARCH,
 		AutoComplete:     true,
@@ -33,7 +33,7 @@ func (search *SearchProvider) GetCommand(T goi18n.TranslateFunc) *model.Command 
 	}
 }
 
-func (search *SearchProvider) DoCommand(args *model.CommandArgs, message string) *model.CommandResponse {
+func (search *SearchProvider) DoCommand(a *App, args *model.CommandArgs, message string) *model.CommandResponse {
 	// This command is handled client-side and shouldn't hit the server.
 	return &model.CommandResponse{
 		Text:         args.T("api.command_search.unsupported.app_error"),

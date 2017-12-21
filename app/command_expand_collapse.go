@@ -6,7 +6,7 @@ package app
 import (
 	"strconv"
 
-	"github.com/mattermost/platform/model"
+	"github.com/mattermost/mattermost-server/model"
 	goi18n "github.com/nicksnyder/go-i18n/i18n"
 )
 
@@ -34,7 +34,7 @@ func (me *CollapseProvider) GetTrigger() string {
 	return CMD_COLLAPSE
 }
 
-func (me *ExpandProvider) GetCommand(T goi18n.TranslateFunc) *model.Command {
+func (me *ExpandProvider) GetCommand(a *App, T goi18n.TranslateFunc) *model.Command {
 	return &model.Command{
 		Trigger:          CMD_EXPAND,
 		AutoComplete:     true,
@@ -43,7 +43,7 @@ func (me *ExpandProvider) GetCommand(T goi18n.TranslateFunc) *model.Command {
 	}
 }
 
-func (me *CollapseProvider) GetCommand(T goi18n.TranslateFunc) *model.Command {
+func (me *CollapseProvider) GetCommand(a *App, T goi18n.TranslateFunc) *model.Command {
 	return &model.Command{
 		Trigger:          CMD_COLLAPSE,
 		AutoComplete:     true,
@@ -52,15 +52,15 @@ func (me *CollapseProvider) GetCommand(T goi18n.TranslateFunc) *model.Command {
 	}
 }
 
-func (me *ExpandProvider) DoCommand(args *model.CommandArgs, message string) *model.CommandResponse {
-	return setCollapsePreference(args, false)
+func (me *ExpandProvider) DoCommand(a *App, args *model.CommandArgs, message string) *model.CommandResponse {
+	return a.setCollapsePreference(args, false)
 }
 
-func (me *CollapseProvider) DoCommand(args *model.CommandArgs, message string) *model.CommandResponse {
-	return setCollapsePreference(args, true)
+func (me *CollapseProvider) DoCommand(a *App, args *model.CommandArgs, message string) *model.CommandResponse {
+	return a.setCollapsePreference(args, true)
 }
 
-func setCollapsePreference(args *model.CommandArgs, isCollapse bool) *model.CommandResponse {
+func (a *App) setCollapsePreference(args *model.CommandArgs, isCollapse bool) *model.CommandResponse {
 	pref := model.Preference{
 		UserId:   args.UserId,
 		Category: model.PREFERENCE_CATEGORY_DISPLAY_SETTINGS,
@@ -68,13 +68,15 @@ func setCollapsePreference(args *model.CommandArgs, isCollapse bool) *model.Comm
 		Value:    strconv.FormatBool(isCollapse),
 	}
 
-	if result := <-Srv.Store.Preference().Save(&model.Preferences{pref}); result.Err != nil {
+	if result := <-a.Srv.Store.Preference().Save(&model.Preferences{pref}); result.Err != nil {
 		return &model.CommandResponse{Text: args.T("api.command_expand_collapse.fail.app_error"), ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
 	}
 
 	socketMessage := model.NewWebSocketEvent(model.WEBSOCKET_EVENT_PREFERENCE_CHANGED, "", "", args.UserId, nil)
 	socketMessage.Add("preference", pref.ToJson())
-	go Publish(socketMessage)
+	a.Go(func() {
+		a.Publish(socketMessage)
+	})
 
 	var rmsg string
 

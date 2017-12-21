@@ -4,11 +4,13 @@
 package api
 
 import (
+	"github.com/mattermost/mattermost-server/model"
 	"testing"
 )
 
 func TestGetClientProperties(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
 
 	if props, err := th.BasicClient.GetClientProperties(); err != nil {
 		t.Fatal(err)
@@ -21,6 +23,25 @@ func TestGetClientProperties(t *testing.T) {
 
 func TestLogClient(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
+
+	if ret, _ := th.BasicClient.LogClient("this is a test"); !ret {
+		t.Fatal("failed to log")
+	}
+
+	enableDeveloper := *th.App.Config().ServiceSettings.EnableDeveloper
+	defer func() {
+		th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableDeveloper = enableDeveloper })
+	}()
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableDeveloper = false })
+
+	th.BasicClient.Logout()
+
+	if _, err := th.BasicClient.LogClient("this is a test"); err == nil {
+		t.Fatal("should have failed")
+	}
+
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableDeveloper = true })
 
 	if ret, _ := th.BasicClient.LogClient("this is a test"); !ret {
 		t.Fatal("failed to log")
@@ -29,6 +50,7 @@ func TestLogClient(t *testing.T) {
 
 func TestGetPing(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
 
 	if m, err := th.BasicClient.GetPing(); err != nil {
 		t.Fatal(err)

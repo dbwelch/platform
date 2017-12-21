@@ -4,14 +4,15 @@
 package app
 
 import (
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/store"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/store"
+	"github.com/mattermost/mattermost-server/utils"
 
 	l4g "github.com/alecthomas/log4go"
 )
 
 type AutoUserCreator struct {
+	app          *App
 	client       *model.Client
 	team         *model.Team
 	EmailLength  utils.Range
@@ -21,8 +22,9 @@ type AutoUserCreator struct {
 	Fuzzy        bool
 }
 
-func NewAutoUserCreator(client *model.Client, team *model.Team) *AutoUserCreator {
+func NewAutoUserCreator(a *App, client *model.Client, team *model.Team) *AutoUserCreator {
 	return &AutoUserCreator{
+		app:          a,
 		client:       client,
 		team:         team,
 		EmailLength:  USER_EMAIL_LEN,
@@ -34,9 +36,9 @@ func NewAutoUserCreator(client *model.Client, team *model.Team) *AutoUserCreator
 }
 
 // Basic test team and user so you always know one
-func CreateBasicUser(client *model.Client) *model.AppError {
+func (a *App) CreateBasicUser(client *model.Client) *model.AppError {
 	result, _ := client.FindTeamByName(BTEST_TEAM_NAME)
-	if result.Data.(bool) == false {
+	if !result.Data.(bool) {
 		newteam := &model.Team{DisplayName: BTEST_TEAM_DISPLAY_NAME, Name: BTEST_TEAM_NAME, Email: BTEST_TEAM_EMAIL, Type: BTEST_TEAM_TYPE}
 		result, err := client.CreateTeam(newteam)
 		if err != nil {
@@ -49,8 +51,8 @@ func CreateBasicUser(client *model.Client) *model.AppError {
 			return err
 		}
 		ruser := result.Data.(*model.User)
-		store.Must(Srv.Store.User().VerifyEmail(ruser.Id))
-		store.Must(Srv.Store.Team().SaveMember(&model.TeamMember{TeamId: basicteam.Id, UserId: ruser.Id}))
+		store.Must(a.Srv.Store.User().VerifyEmail(ruser.Id))
+		store.Must(a.Srv.Store.Team().SaveMember(&model.TeamMember{TeamId: basicteam.Id, UserId: ruser.Id}, *a.Config().TeamSettings.MaxUsersPerTeam))
 	}
 	return nil
 }
@@ -81,14 +83,14 @@ func (cfg *AutoUserCreator) createRandomUser() (*model.User, bool) {
 	ruser := result.Data.(*model.User)
 
 	status := &model.Status{UserId: ruser.Id, Status: model.STATUS_ONLINE, Manual: false, LastActivityAt: model.GetMillis(), ActiveChannel: ""}
-	if result := <-Srv.Store.Status().SaveOrUpdate(status); result.Err != nil {
+	if result := <-cfg.app.Srv.Store.Status().SaveOrUpdate(status); result.Err != nil {
 		result.Err.Translate(utils.T)
 		l4g.Error(result.Err.Error())
 		return nil, false
 	}
 
 	// We need to cheat to verify the user's email
-	store.Must(Srv.Store.User().VerifyEmail(ruser.Id))
+	store.Must(cfg.app.Srv.Store.User().VerifyEmail(ruser.Id))
 
 	return result.Data.(*model.User), true
 }
@@ -100,7 +102,7 @@ func (cfg *AutoUserCreator) CreateTestUsers(num utils.Range) ([]*model.User, boo
 	for i := 0; i < numUsers; i++ {
 		var err bool
 		users[i], err = cfg.createRandomUser()
-		if err != true {
+		if !err {
 			return users, false
 		}
 	}

@@ -4,9 +4,8 @@
 package api4
 
 import (
+	"github.com/mattermost/mattermost-server/model"
 	"testing"
-
-	"github.com/mattermost/platform/utils"
 )
 
 func TestGetWebrtcToken(t *testing.T) {
@@ -15,14 +14,14 @@ func TestGetWebrtcToken(t *testing.T) {
 	}
 
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
-	enableWebrtc := *utils.Cfg.WebrtcSettings.Enable
+	enableWebrtc := *th.App.Config().WebrtcSettings.Enable
 	defer func() {
-		*utils.Cfg.WebrtcSettings.Enable = enableWebrtc
+		th.App.UpdateConfig(func(cfg *model.Config) { *cfg.WebrtcSettings.Enable = enableWebrtc })
 	}()
-	*utils.Cfg.WebrtcSettings.Enable = false
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.WebrtcSettings.Enable = false })
 
 	_, resp := Client.GetWebrtcToken()
 	CheckNotImplementedStatus(t, resp)

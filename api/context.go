@@ -8,19 +8,20 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	l4g "github.com/alecthomas/log4go"
 	"github.com/gorilla/mux"
 	goi18n "github.com/nicksnyder/go-i18n/i18n"
 
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/einterfaces"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/app"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
 type Context struct {
+	App           *app.App
 	Session       model.Session
 	RequestId     string
 	IpAddress     string
@@ -32,62 +33,62 @@ type Context struct {
 	T             goi18n.TranslateFunc
 	Locale        string
 	TeamId        string
-	isSystemAdmin bool
 }
 
-func ApiAppHandler(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
-	return &handler{h, false, false, true, false, false, false, false}
+func (api *API) ApiAppHandler(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
+	return &handler{api.App, h, false, false, true, false, false, false, false}
 }
 
-func AppHandler(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
-	return &handler{h, false, false, false, false, false, false, false}
+func (api *API) AppHandler(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
+	return &handler{api.App, h, false, false, false, false, false, false, false}
 }
 
-func AppHandlerIndependent(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
-	return &handler{h, false, false, false, false, true, false, false}
+func (api *API) AppHandlerIndependent(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
+	return &handler{api.App, h, false, false, false, false, true, false, false}
 }
 
-func ApiUserRequired(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
-	return &handler{h, true, false, true, false, false, false, true}
+func (api *API) ApiUserRequired(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
+	return &handler{api.App, h, true, false, true, false, false, false, true}
 }
 
-func ApiUserRequiredActivity(h func(*Context, http.ResponseWriter, *http.Request), isUserActivity bool) http.Handler {
-	return &handler{h, true, false, true, isUserActivity, false, false, true}
+func (api *API) ApiUserRequiredActivity(h func(*Context, http.ResponseWriter, *http.Request), isUserActivity bool) http.Handler {
+	return &handler{api.App, h, true, false, true, isUserActivity, false, false, true}
 }
 
-func ApiUserRequiredMfa(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
-	return &handler{h, true, false, true, false, false, false, false}
+func (api *API) ApiUserRequiredMfa(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
+	return &handler{api.App, h, true, false, true, false, false, false, false}
 }
 
-func UserRequired(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
-	return &handler{h, true, false, false, false, false, false, true}
+func (api *API) UserRequired(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
+	return &handler{api.App, h, true, false, false, false, false, false, true}
 }
 
-func AppHandlerTrustRequester(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
-	return &handler{h, false, false, false, false, false, true, false}
+func (api *API) AppHandlerTrustRequester(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
+	return &handler{api.App, h, false, false, false, false, false, true, false}
 }
 
-func ApiAdminSystemRequired(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
-	return &handler{h, true, true, true, false, false, false, true}
+func (api *API) ApiAdminSystemRequired(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
+	return &handler{api.App, h, true, true, true, false, false, false, true}
 }
 
-func ApiAdminSystemRequiredTrustRequester(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
-	return &handler{h, true, true, true, false, false, true, true}
+func (api *API) ApiAdminSystemRequiredTrustRequester(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
+	return &handler{api.App, h, true, true, true, false, false, true, true}
 }
 
-func ApiAppHandlerTrustRequester(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
-	return &handler{h, false, false, true, false, false, true, false}
+func (api *API) ApiAppHandlerTrustRequester(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
+	return &handler{api.App, h, false, false, true, false, false, true, false}
 }
 
-func ApiUserRequiredTrustRequester(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
-	return &handler{h, true, false, true, false, false, true, true}
+func (api *API) ApiUserRequiredTrustRequester(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
+	return &handler{api.App, h, true, false, true, false, false, true, true}
 }
 
-func ApiAppHandlerTrustRequesterIndependent(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
-	return &handler{h, false, false, true, false, true, true, false}
+func (api *API) ApiAppHandlerTrustRequesterIndependent(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
+	return &handler{api.App, h, false, false, true, false, true, true, false}
 }
 
 type handler struct {
+	app                *app.App
 	handleFunc         func(*Context, http.ResponseWriter, *http.Request)
 	requireUser        bool
 	requireSystemAdmin bool
@@ -102,15 +103,16 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	l4g.Debug("%v", r.URL.Path)
 
-	if metrics := einterfaces.GetMetricsInterface(); metrics != nil && h.isApi {
-		metrics.IncrementHttpRequest()
-	}
-
 	c := &Context{}
+	c.App = h.app
 	c.T, c.Locale = utils.GetTranslationsAndLocale(w, r)
 	c.RequestId = model.NewId()
 	c.IpAddress = utils.GetIpAddress(r)
 	c.TeamId = mux.Vars(r)["team_id"]
+
+	if metrics := c.App.Metrics; metrics != nil && h.isApi {
+		metrics.IncrementHttpRequest()
+	}
 
 	token := ""
 	isTokenFromQueryString := false
@@ -133,7 +135,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 			if (h.requireSystemAdmin || h.requireUser) && !h.trustRequester {
 				if r.Header.Get(model.HEADER_REQUESTED_WITH) != model.HEADER_REQUESTED_WITH_XML {
-					c.Err = model.NewLocAppError("ServeHTTP", "api.context.session_expired.app_error", nil, "token="+token+" Appears to be a CSRF attempt")
+					c.Err = model.NewAppError("ServeHTTP", "api.context.session_expired.app_error", nil, "token="+token+" Appears to be a CSRF attempt", http.StatusUnauthorized)
 					token = ""
 				}
 			}
@@ -149,7 +151,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	c.SetSiteURLHeader(app.GetProtocol(r) + "://" + r.Host)
 
 	w.Header().Set(model.HEADER_REQUEST_ID, c.RequestId)
-	w.Header().Set(model.HEADER_VERSION_ID, fmt.Sprintf("%v.%v.%v.%v", model.CurrentVersion, model.BuildNumber, utils.ClientCfgHash, utils.IsLicensed))
+	w.Header().Set(model.HEADER_VERSION_ID, fmt.Sprintf("%v.%v.%v.%v", model.CurrentVersion, model.BuildNumber, utils.ClientCfgHash, utils.IsLicensed()))
 
 	// Instruct the browser not to display us in an iframe unless is the same origin for anti-clickjacking
 	if !h.isApi {
@@ -165,34 +167,18 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(token) != 0 {
-		session, err := app.GetSession(token)
+		session, err := c.App.GetSession(token)
 
 		if err != nil {
 			l4g.Error(utils.T("api.context.invalid_session.error"), err.Error())
 			c.RemoveSessionCookie(w, r)
 			if h.requireUser || h.requireSystemAdmin {
-				c.Err = model.NewLocAppError("ServeHTTP", "api.context.session_expired.app_error", nil, "token="+token)
-				c.Err.StatusCode = http.StatusUnauthorized
+				c.Err = model.NewAppError("ServeHTTP", "api.context.session_expired.app_error", nil, "token="+token, http.StatusUnauthorized)
 			}
 		} else if !session.IsOAuth && isTokenFromQueryString {
-			c.Err = model.NewLocAppError("ServeHTTP", "api.context.token_provided.app_error", nil, "token="+token)
-			c.Err.StatusCode = http.StatusUnauthorized
+			c.Err = model.NewAppError("ServeHTTP", "api.context.token_provided.app_error", nil, "token="+token, http.StatusUnauthorized)
 		} else {
 			c.Session = *session
-		}
-	}
-
-	// TEMPORARY CODE FOR 3.9, REMOVE FOR 3.10
-	if cookie, err := r.Cookie(model.SESSION_COOKIE_TOKEN); err == nil && c.Session.UserId != "" {
-		if _, err = r.Cookie(model.SESSION_COOKIE_USER); err != nil {
-			http.SetCookie(w, &http.Cookie{
-				Name:    model.SESSION_COOKIE_USER,
-				Value:   c.Session.UserId,
-				Path:    "/",
-				MaxAge:  cookie.MaxAge,
-				Expires: cookie.Expires,
-				Secure:  cookie.Secure,
-			})
 		}
 	}
 
@@ -205,7 +191,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		c.Path = "/" + strings.Join(splitURL[2:], "/")
 	}
 
-	if h.isApi && !*utils.Cfg.ServiceSettings.EnableAPIv3 {
+	if h.isApi && !*c.App.Config().ServiceSettings.EnableAPIv3 {
 		c.Err = model.NewAppError("ServeHTTP", "api.context.v3_disabled.app_error", nil, "", http.StatusNotImplemented)
 	}
 
@@ -222,13 +208,17 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if c.Err == nil && h.isUserActivity && token != "" && len(c.Session.UserId) > 0 {
-		app.SetStatusOnline(c.Session.UserId, c.Session.Id, false)
-		app.UpdateLastActivityAtIfNeeded(c.Session)
+		c.App.SetStatusOnline(c.Session.UserId, c.Session.Id, false)
+		c.App.UpdateLastActivityAtIfNeeded(c.Session)
 	}
 
 	if c.Err == nil && (h.requireUser || h.requireSystemAdmin) {
 		//check if teamId exist
 		c.CheckTeamId()
+	}
+
+	if h.isApi {
+		atomic.StoreInt32(model.UsedApiV3, 1)
 	}
 
 	if c.Err == nil {
@@ -243,7 +233,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		c.Err.Where = r.URL.Path
 
 		// Block out detailed error when not in developer mode
-		if !*utils.Cfg.ServiceSettings.EnableDeveloper {
+		if !*c.App.Config().ServiceSettings.EnableDeveloper {
 			c.Err.DetailedError = ""
 		}
 
@@ -251,8 +241,8 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(c.Err.StatusCode)
 			w.Write([]byte(c.Err.ToJson()))
 
-			if einterfaces.GetMetricsInterface() != nil {
-				einterfaces.GetMetricsInterface().IncrementHttpError()
+			if c.App.Metrics != nil {
+				c.App.Metrics.IncrementHttpError()
 			}
 		} else {
 			if c.Err.StatusCode == http.StatusUnauthorized {
@@ -264,17 +254,17 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	}
 
-	if h.isApi && einterfaces.GetMetricsInterface() != nil {
+	if h.isApi && c.App.Metrics != nil {
 		if r.URL.Path != model.API_URL_SUFFIX_V3+"/users/websocket" {
 			elapsed := float64(time.Since(now)) / float64(time.Second)
-			einterfaces.GetMetricsInterface().ObserveHttpRequestDuration(elapsed)
+			c.App.Metrics.ObserveHttpRequestDuration(elapsed)
 		}
 	}
 }
 
 func (c *Context) LogAudit(extraInfo string) {
 	audit := &model.Audit{UserId: c.Session.UserId, IpAddress: c.IpAddress, Action: c.Path, ExtraInfo: extraInfo, SessionId: c.Session.Id}
-	if r := <-app.Srv.Store.Audit().Save(audit); r.Err != nil {
+	if r := <-c.App.Srv.Store.Audit().Save(audit); r.Err != nil {
 		c.LogError(r.Err)
 	}
 }
@@ -286,7 +276,7 @@ func (c *Context) LogAuditWithUserId(userId, extraInfo string) {
 	}
 
 	audit := &model.Audit{UserId: userId, IpAddress: c.IpAddress, Action: c.Path, ExtraInfo: extraInfo, SessionId: c.Session.Id}
-	if r := <-app.Srv.Store.Audit().Save(audit); r.Err != nil {
+	if r := <-c.App.Srv.Store.Audit().Save(audit); r.Err != nil {
 		c.LogError(r.Err)
 	}
 }
@@ -296,7 +286,7 @@ func (c *Context) LogError(err *model.AppError) {
 	// filter out endless reconnects
 	if c.Path == "/api/v3/users/websocket" && err.StatusCode == 401 || err.Id == "web.check_browser_compatibility.app_error" {
 		c.LogDebug(err)
-	} else {
+	} else if err.Id != "api.post.create_post.town_square_read_only" {
 		l4g.Error(utils.TDefault("api.context.log.error"), c.Path, err.Where, err.StatusCode,
 			c.RequestId, c.Session.UserId, c.IpAddress, err.SystemMessage(utils.TDefault), err.DetailedError)
 	}
@@ -308,7 +298,7 @@ func (c *Context) LogDebug(err *model.AppError) {
 }
 
 func (c *Context) UserRequired() {
-	if !*utils.Cfg.ServiceSettings.EnableUserAccessTokens && c.Session.Props[model.SESSION_PROP_TYPE] == model.SESSION_TYPE_USER_ACCESS_TOKEN {
+	if !*c.App.Config().ServiceSettings.EnableUserAccessTokens && c.Session.Props[model.SESSION_PROP_TYPE] == model.SESSION_TYPE_USER_ACCESS_TOKEN {
 		c.Err = model.NewAppError("", "api.context.session_expired.app_error", nil, "UserAccessToken", http.StatusUnauthorized)
 		return
 	}
@@ -321,7 +311,7 @@ func (c *Context) UserRequired() {
 
 func (c *Context) MfaRequired() {
 	// Must be licensed for MFA and have it configured for enforcement
-	if !utils.IsLicensed || !*utils.License.Features.MFA || !*utils.Cfg.ServiceSettings.EnableMultifactorAuthentication || !*utils.Cfg.ServiceSettings.EnforceMultifactorAuthentication {
+	if !utils.IsLicensed() || !*utils.License().Features.MFA || !*c.App.Config().ServiceSettings.EnableMultifactorAuthentication || !*c.App.Config().ServiceSettings.EnforceMultifactorAuthentication {
 		return
 	}
 
@@ -330,9 +320,8 @@ func (c *Context) MfaRequired() {
 		return
 	}
 
-	if result := <-app.Srv.Store.User().Get(c.Session.UserId); result.Err != nil {
-		c.Err = model.NewLocAppError("", "api.context.session_expired.app_error", nil, "MfaRequired")
-		c.Err.StatusCode = http.StatusUnauthorized
+	if result := <-c.App.Srv.Store.User().Get(c.Session.UserId); result.Err != nil {
+		c.Err = model.NewAppError("", "api.context.session_expired.app_error", nil, "MfaRequired", http.StatusUnauthorized)
 		return
 	} else {
 		user := result.Data.(*model.User)
@@ -345,8 +334,7 @@ func (c *Context) MfaRequired() {
 		}
 
 		if !user.MfaActive {
-			c.Err = model.NewLocAppError("", "api.context.mfa_required.app_error", nil, "MfaRequired")
-			c.Err.StatusCode = http.StatusUnauthorized
+			c.Err = model.NewAppError("", "api.context.mfa_required.app_error", nil, "MfaRequired", http.StatusUnauthorized)
 			return
 		}
 	}
@@ -354,18 +342,16 @@ func (c *Context) MfaRequired() {
 
 func (c *Context) SystemAdminRequired() {
 	if len(c.Session.UserId) == 0 {
-		c.Err = model.NewLocAppError("", "api.context.session_expired.app_error", nil, "SystemAdminRequired")
-		c.Err.StatusCode = http.StatusUnauthorized
+		c.Err = model.NewAppError("", "api.context.session_expired.app_error", nil, "SystemAdminRequired", http.StatusUnauthorized)
 		return
 	} else if !c.IsSystemAdmin() {
-		c.Err = model.NewLocAppError("", "api.context.permissions.app_error", nil, "AdminRequired")
-		c.Err.StatusCode = http.StatusForbidden
+		c.Err = model.NewAppError("", "api.context.permissions.app_error", nil, "AdminRequired", http.StatusForbidden)
 		return
 	}
 }
 
 func (c *Context) IsSystemAdmin() bool {
-	return app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM)
+	return c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM)
 }
 
 func (c *Context) RemoveSessionCookie(w http.ResponseWriter, r *http.Request) {
@@ -393,18 +379,16 @@ func (c *Context) SetInvalidParam(where string, name string) {
 }
 
 func NewInvalidParamError(where string, name string) *model.AppError {
-	err := model.NewLocAppError(where, "api.context.invalid_param.app_error", map[string]interface{}{"Name": name}, "")
-	err.StatusCode = http.StatusBadRequest
+	err := model.NewAppError(where, "api.context.invalid_param.app_error", map[string]interface{}{"Name": name}, "", http.StatusBadRequest)
 	return err
 }
 
 func (c *Context) SetUnknownError(where string, details string) {
-	c.Err = model.NewLocAppError(where, "api.context.unknown.app_error", nil, details)
+	c.Err = model.NewAppError(where, "api.context.unknown.app_error", nil, details, http.StatusInternalServerError)
 }
 
 func (c *Context) SetPermissionError(permission *model.Permission) {
-	c.Err = model.NewLocAppError("Permissions", "api.context.permissions.app_error", nil, "userId="+c.Session.UserId+", "+"permission="+permission.Id)
-	c.Err.StatusCode = http.StatusForbidden
+	c.Err = model.NewAppError("Permissions", "api.context.permissions.app_error", nil, "userId="+c.Session.UserId+", "+"permission="+permission.Id, http.StatusForbidden)
 }
 
 func (c *Context) setTeamURL(url string, valid bool) {
@@ -413,7 +397,7 @@ func (c *Context) setTeamURL(url string, valid bool) {
 }
 
 func (c *Context) SetTeamURLFromSession() {
-	if result := <-app.Srv.Store.Team().Get(c.TeamId); result.Err == nil {
+	if result := <-c.App.Srv.Store.Team().Get(c.TeamId); result.Err == nil {
 		c.setTeamURL(c.GetSiteURLHeader()+"/"+result.Data.(*model.Team).Name, true)
 	}
 }
@@ -445,14 +429,33 @@ func (c *Context) GetCurrentTeamMember() *model.TeamMember {
 	return c.Session.GetTeamByTeamId(c.TeamId)
 }
 
+func (c *Context) HandleEtag(etag string, routeName string, w http.ResponseWriter, r *http.Request) bool {
+	metrics := c.App.Metrics
+	if et := r.Header.Get(model.HEADER_ETAG_CLIENT); len(etag) > 0 {
+		if et == etag {
+			w.Header().Set(model.HEADER_ETAG_SERVER, etag)
+			w.WriteHeader(http.StatusNotModified)
+			if metrics != nil {
+				metrics.IncrementEtagHitCounter(routeName)
+			}
+			return true
+		}
+	}
+
+	if metrics != nil {
+		metrics.IncrementEtagMissCounter(routeName)
+	}
+
+	return false
+}
+
 func IsApiCall(r *http.Request) bool {
 	return strings.Index(r.URL.Path, "/api/") == 0
 }
 
 func Handle404(w http.ResponseWriter, r *http.Request) {
-	err := model.NewLocAppError("Handle404", "api.context.404.app_error", nil, "")
+	err := model.NewAppError("Handle404", "api.context.404.app_error", nil, "", http.StatusNotFound)
 	err.Translate(utils.T)
-	err.StatusCode = http.StatusNotFound
 
 	l4g.Debug("%v: code=404 ip=%v", r.URL.Path, utils.GetIpAddress(r))
 
@@ -467,8 +470,8 @@ func Handle404(w http.ResponseWriter, r *http.Request) {
 
 func (c *Context) CheckTeamId() {
 	if c.TeamId != "" && c.Session.GetTeamByTeamId(c.TeamId) == nil {
-		if app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
-			if result := <-app.Srv.Store.Team().Get(c.TeamId); result.Err != nil {
+		if c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
+			if result := <-c.App.Srv.Store.Team().Get(c.TeamId); result.Err != nil {
 				c.Err = result.Err
 				c.Err.StatusCode = http.StatusBadRequest
 				return

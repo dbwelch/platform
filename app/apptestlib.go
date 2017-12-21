@@ -4,71 +4,105 @@
 package app
 
 import (
+	"encoding/json"
+	"io/ioutil"
+	"os"
+	"path/filepath"
 	"time"
 
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
-
 	l4g "github.com/alecthomas/log4go"
+
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/plugin"
+	"github.com/mattermost/mattermost-server/plugin/pluginenv"
+	"github.com/mattermost/mattermost-server/store"
+	"github.com/mattermost/mattermost-server/store/sqlstore"
+	"github.com/mattermost/mattermost-server/store/storetest"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
 type TestHelper struct {
+	App          *App
 	BasicTeam    *model.Team
 	BasicUser    *model.User
 	BasicUser2   *model.User
 	BasicChannel *model.Channel
 	BasicPost    *model.Post
+
+	tempWorkspace string
+	pluginHooks   map[string]plugin.Hooks
+}
+
+type persistentTestStore struct {
+	store.Store
+}
+
+func (*persistentTestStore) Close() {}
+
+var testStoreContainer *storetest.RunningContainer
+var testStore *persistentTestStore
+
+// UseTestStore sets the container and corresponding settings to use for tests. Once the tests are
+// complete (e.g. at the end of your TestMain implementation), you should call StopTestStore.
+func UseTestStore(container *storetest.RunningContainer, settings *model.SqlSettings) {
+	testStoreContainer = container
+	testStore = &persistentTestStore{store.NewLayeredStore(sqlstore.NewSqlSupplier(*settings, nil), nil, nil)}
+}
+
+func StopTestStore() {
+	if testStoreContainer != nil {
+		testStoreContainer.Stop()
+		testStoreContainer = nil
+	}
+}
+
+func setupTestHelper(enterprise bool) *TestHelper {
+	var options []Option
+	if testStore != nil {
+		options = append(options, StoreOverride(testStore))
+	}
+
+	th := &TestHelper{
+		App:         New(options...),
+		pluginHooks: make(map[string]plugin.Hooks),
+	}
+
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.TeamSettings.MaxUsersPerTeam = 50 })
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.RateLimitSettings.Enable = false })
+	utils.DisableDebugLogForTest()
+	prevListenAddress := *th.App.Config().ServiceSettings.ListenAddress
+	if testStore != nil {
+		th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.ListenAddress = ":0" })
+	}
+	th.App.StartServer()
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.ListenAddress = prevListenAddress })
+	utils.EnableDebugLogForTest()
+	th.App.Srv.Store.MarkSystemRanUnitTests()
+
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.TeamSettings.EnableOpenServer = true })
+
+	utils.SetIsLicensed(enterprise)
+	if enterprise {
+		utils.License().Features.SetDefaults()
+	}
+
+	return th
 }
 
 func SetupEnterprise() *TestHelper {
-	if Srv == nil {
-		utils.TranslationsPreInit()
-		utils.LoadConfig("config.json")
-		utils.InitTranslations(utils.Cfg.LocalizationSettings)
-		utils.Cfg.TeamSettings.MaxUsersPerTeam = 50
-		*utils.Cfg.RateLimitSettings.Enable = false
-		utils.DisableDebugLogForTest()
-		utils.License.Features.SetDefaults()
-		NewServer()
-		InitStores()
-		StartServer()
-		utils.InitHTML()
-		utils.EnableDebugLogForTest()
-		Srv.Store.MarkSystemRanUnitTests()
-
-		*utils.Cfg.TeamSettings.EnableOpenServer = true
-	}
-
-	return &TestHelper{}
+	return setupTestHelper(true)
 }
 
 func Setup() *TestHelper {
-	if Srv == nil {
-		utils.TranslationsPreInit()
-		utils.LoadConfig("config.json")
-		utils.InitTranslations(utils.Cfg.LocalizationSettings)
-		utils.Cfg.TeamSettings.MaxUsersPerTeam = 50
-		*utils.Cfg.RateLimitSettings.Enable = false
-		utils.DisableDebugLogForTest()
-		NewServer()
-		InitStores()
-		StartServer()
-		utils.InitHTML()
-		utils.EnableDebugLogForTest()
-		Srv.Store.MarkSystemRanUnitTests()
-
-		*utils.Cfg.TeamSettings.EnableOpenServer = true
-	}
-
-	return &TestHelper{}
+	return setupTestHelper(false)
 }
 
 func (me *TestHelper) InitBasic() *TestHelper {
 	me.BasicTeam = me.CreateTeam()
 	me.BasicUser = me.CreateUser()
-	LinkUserToTeam(me.BasicUser, me.BasicTeam)
+	me.LinkUserToTeam(me.BasicUser, me.BasicTeam)
 	me.BasicUser2 = me.CreateUser()
-	LinkUserToTeam(me.BasicUser2, me.BasicTeam)
+	me.LinkUserToTeam(me.BasicUser2, me.BasicTeam)
 	me.BasicChannel = me.CreateChannel(me.BasicTeam)
 	me.BasicPost = me.CreatePost(me.BasicChannel)
 
@@ -94,7 +128,7 @@ func (me *TestHelper) CreateTeam() *model.Team {
 
 	utils.DisableDebugLogForTest()
 	var err *model.AppError
-	if team, err = CreateTeam(team); err != nil {
+	if team, err = me.App.CreateTeam(team); err != nil {
 		l4g.Error(err.Error())
 		l4g.Close()
 		time.Sleep(time.Second)
@@ -117,7 +151,7 @@ func (me *TestHelper) CreateUser() *model.User {
 
 	utils.DisableDebugLogForTest()
 	var err *model.AppError
-	if user, err = CreateUser(user); err != nil {
+	if user, err = me.App.CreateUser(user); err != nil {
 		l4g.Error(err.Error())
 		l4g.Close()
 		time.Sleep(time.Second)
@@ -148,7 +182,7 @@ func (me *TestHelper) createChannel(team *model.Team, channelType string) *model
 
 	utils.DisableDebugLogForTest()
 	var err *model.AppError
-	if channel, err = CreateChannel(channel, true); err != nil {
+	if channel, err = me.App.CreateChannel(channel, true); err != nil {
 		l4g.Error(err.Error())
 		l4g.Close()
 		time.Sleep(time.Second)
@@ -169,7 +203,7 @@ func (me *TestHelper) CreatePost(channel *model.Channel) *model.Post {
 
 	utils.DisableDebugLogForTest()
 	var err *model.AppError
-	if post, err = CreatePost(post, channel.TeamId, false); err != nil {
+	if post, err = me.App.CreatePost(post, channel, false); err != nil {
 		l4g.Error(err.Error())
 		l4g.Close()
 		time.Sleep(time.Second)
@@ -179,10 +213,10 @@ func (me *TestHelper) CreatePost(channel *model.Channel) *model.Post {
 	return post
 }
 
-func LinkUserToTeam(user *model.User, team *model.Team) {
+func (me *TestHelper) LinkUserToTeam(user *model.User, team *model.Team) {
 	utils.DisableDebugLogForTest()
 
-	err := JoinUserToTeam(team, user, "")
+	err := me.App.JoinUserToTeam(team, user, "")
 	if err != nil {
 		l4g.Error(err.Error())
 		l4g.Close()
@@ -193,8 +227,67 @@ func LinkUserToTeam(user *model.User, team *model.Team) {
 	utils.EnableDebugLogForTest()
 }
 
-func TearDown() {
-	if Srv != nil {
-		StopServer()
+func (me *TestHelper) TearDown() {
+	me.App.Shutdown()
+	if err := recover(); err != nil {
+		StopTestStore()
+		panic(err)
+	}
+	if me.tempWorkspace != "" {
+		os.RemoveAll(me.tempWorkspace)
+	}
+}
+
+type mockPluginSupervisor struct {
+	hooks plugin.Hooks
+}
+
+func (s *mockPluginSupervisor) Start(api plugin.API) error {
+	return s.hooks.OnActivate(api)
+}
+
+func (s *mockPluginSupervisor) Stop() error {
+	return nil
+}
+
+func (s *mockPluginSupervisor) Hooks() plugin.Hooks {
+	return s.hooks
+}
+
+func (me *TestHelper) InstallPlugin(manifest *model.Manifest, hooks plugin.Hooks) {
+	if me.tempWorkspace == "" {
+		dir, err := ioutil.TempDir("", "apptest")
+		if err != nil {
+			panic(err)
+		}
+		me.tempWorkspace = dir
+	}
+
+	pluginDir := filepath.Join(me.tempWorkspace, "plugins")
+	webappDir := filepath.Join(me.tempWorkspace, "webapp")
+	me.App.InitPlugins(pluginDir, webappDir, func(bundle *model.BundleInfo) (plugin.Supervisor, error) {
+		if hooks, ok := me.pluginHooks[bundle.Manifest.Id]; ok {
+			return &mockPluginSupervisor{hooks}, nil
+		}
+		return pluginenv.DefaultSupervisorProvider(bundle)
+	})
+
+	me.pluginHooks[manifest.Id] = hooks
+
+	manifestCopy := *manifest
+	if manifestCopy.Backend == nil {
+		manifestCopy.Backend = &model.ManifestBackend{}
+	}
+	manifestBytes, err := json.Marshal(&manifestCopy)
+	if err != nil {
+		panic(err)
+	}
+
+	if err := os.MkdirAll(filepath.Join(pluginDir, manifest.Id), 0700); err != nil {
+		panic(err)
+	}
+
+	if err := ioutil.WriteFile(filepath.Join(pluginDir, manifest.Id, "plugin.json"), manifestBytes, 0600); err != nil {
+		panic(err)
 	}
 }

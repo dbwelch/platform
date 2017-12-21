@@ -4,7 +4,7 @@
 package app
 
 import (
-	"github.com/mattermost/platform/model"
+	"github.com/mattermost/mattermost-server/model"
 	goi18n "github.com/nicksnyder/go-i18n/i18n"
 )
 
@@ -23,7 +23,7 @@ func (me *RenameProvider) GetTrigger() string {
 	return CMD_RENAME
 }
 
-func (me *RenameProvider) GetCommand(T goi18n.TranslateFunc) *model.Command {
+func (me *RenameProvider) GetCommand(a *App, T goi18n.TranslateFunc) *model.Command {
 	return &model.Command{
 		Trigger:          CMD_RENAME,
 		AutoComplete:     true,
@@ -33,17 +33,17 @@ func (me *RenameProvider) GetCommand(T goi18n.TranslateFunc) *model.Command {
 	}
 }
 
-func (me *RenameProvider) DoCommand(args *model.CommandArgs, message string) *model.CommandResponse {
-	channel, err := GetChannel(args.ChannelId)
+func (me *RenameProvider) DoCommand(a *App, args *model.CommandArgs, message string) *model.CommandResponse {
+	channel, err := a.GetChannel(args.ChannelId)
 	if err != nil {
 		return &model.CommandResponse{Text: args.T("api.command_channel_rename.channel.app_error"), ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
 	}
 
-	if channel.Type == model.CHANNEL_OPEN && !SessionHasPermissionToChannel(args.Session, args.ChannelId, model.PERMISSION_MANAGE_PUBLIC_CHANNEL_PROPERTIES) {
+	if channel.Type == model.CHANNEL_OPEN && !a.SessionHasPermissionToChannel(args.Session, args.ChannelId, model.PERMISSION_MANAGE_PUBLIC_CHANNEL_PROPERTIES) {
 		return &model.CommandResponse{Text: args.T("api.command_channel_rename.permission.app_error"), ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
 	}
 
-	if channel.Type == model.CHANNEL_PRIVATE && !SessionHasPermissionToChannel(args.Session, args.ChannelId, model.PERMISSION_MANAGE_PRIVATE_CHANNEL_PROPERTIES) {
+	if channel.Type == model.CHANNEL_PRIVATE && !a.SessionHasPermissionToChannel(args.Session, args.ChannelId, model.PERMISSION_MANAGE_PRIVATE_CHANNEL_PROPERTIES) {
 		return &model.CommandResponse{Text: args.T("api.command_channel_rename.permission.app_error"), ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
 	}
 
@@ -53,6 +53,10 @@ func (me *RenameProvider) DoCommand(args *model.CommandArgs, message string) *mo
 
 	if len(message) == 0 {
 		return &model.CommandResponse{Text: args.T("api.command_channel_rename.message.app_error"), ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
+	} else if len(message) > model.CHANNEL_NAME_UI_MAX_LENGTH {
+		return &model.CommandResponse{Text: args.T("api.command_channel_rename.too_long.app_error", map[string]interface{}{"Length": model.CHANNEL_NAME_UI_MAX_LENGTH}), ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
+	} else if len(message) < model.CHANNEL_NAME_MIN_LENGTH {
+		return &model.CommandResponse{Text: args.T("api.command_channel_rename.too_short.app_error", map[string]interface{}{"Length": model.CHANNEL_NAME_MIN_LENGTH}), ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
 	}
 
 	patch := &model.ChannelPatch{
@@ -60,7 +64,7 @@ func (me *RenameProvider) DoCommand(args *model.CommandArgs, message string) *mo
 	}
 	*patch.DisplayName = message
 
-	_, err = PatchChannel(channel, patch, args.UserId)
+	_, err = a.PatchChannel(channel, patch, args.UserId)
 	if err != nil {
 		return &model.CommandResponse{Text: args.T("api.command_channel_rename.update_channel.app_error"), ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
 	}

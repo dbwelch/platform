@@ -4,8 +4,7 @@
 package app
 
 import (
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/model"
 	goi18n "github.com/nicksnyder/go-i18n/i18n"
 )
 
@@ -24,7 +23,7 @@ func (h *HelpProvider) GetTrigger() string {
 	return CMD_HELP
 }
 
-func (h *HelpProvider) GetCommand(T goi18n.TranslateFunc) *model.Command {
+func (h *HelpProvider) GetCommand(a *App, T goi18n.TranslateFunc) *model.Command {
 	return &model.Command{
 		Trigger:          CMD_HELP,
 		AutoComplete:     true,
@@ -33,8 +32,8 @@ func (h *HelpProvider) GetCommand(T goi18n.TranslateFunc) *model.Command {
 	}
 }
 
-func (h *HelpProvider) DoCommand(args *model.CommandArgs, message string) *model.CommandResponse {
-	helpLink := *utils.Cfg.SupportSettings.HelpLink
+func (h *HelpProvider) DoCommand(a *App, args *model.CommandArgs, message string) *model.CommandResponse {
+	helpLink := *a.Config().SupportSettings.HelpLink
 
 	if helpLink == "" {
 		helpLink = model.SUPPORT_SETTINGS_DEFAULT_HELP_LINK

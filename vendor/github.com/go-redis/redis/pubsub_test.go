@@ -68,7 +68,7 @@ var _ = Describe("PubSub", func() {
 		}
 
 		stats := client.PoolStats()
-		Expect(stats.Requests - stats.Hits).To(Equal(uint32(2)))
+		Expect(stats.Misses).To(Equal(uint32(2)))
 	})
 
 	It("should pub/sub channels", func() {
@@ -159,9 +159,9 @@ var _ = Describe("PubSub", func() {
 		{
 			msgi, err := pubsub.ReceiveTimeout(time.Second)
 			Expect(err).NotTo(HaveOccurred())
-			subscr := msgi.(*redis.Message)
-			Expect(subscr.Channel).To(Equal("mychannel"))
-			Expect(subscr.Payload).To(Equal("hello"))
+			msg := msgi.(*redis.Message)
+			Expect(msg.Channel).To(Equal("mychannel"))
+			Expect(msg.Payload).To(Equal("hello"))
 		}
 
 		{
@@ -191,7 +191,7 @@ var _ = Describe("PubSub", func() {
 		}
 
 		stats := client.PoolStats()
-		Expect(stats.Requests - stats.Hits).To(Equal(uint32(2)))
+		Expect(stats.Misses).To(Equal(uint32(2)))
 	})
 
 	It("should ping/pong", func() {
@@ -290,8 +290,24 @@ var _ = Describe("PubSub", func() {
 		Eventually(done).Should(Receive())
 
 		stats := client.PoolStats()
-		Expect(stats.Requests).To(Equal(uint32(2)))
 		Expect(stats.Hits).To(Equal(uint32(1)))
+		Expect(stats.Misses).To(Equal(uint32(1)))
+	})
+
+	It("returns an error when subscribe fails", func() {
+		pubsub := client.Subscribe()
+		defer pubsub.Close()
+
+		pubsub.SetNetConn(&badConn{
+			readErr:  io.EOF,
+			writeErr: io.EOF,
+		})
+
+		err := pubsub.Subscribe("mychannel")
+		Expect(err).To(MatchError("EOF"))
+
+		err = pubsub.Subscribe("mychannel")
+		Expect(err).NotTo(HaveOccurred())
 	})
 
 	expectReceiveMessageOnError := func(pubsub *redis.PubSub) {
@@ -384,8 +400,11 @@ var _ = Describe("PubSub", func() {
 		pubsub := client.Subscribe()
 		defer pubsub.Close()
 
+		var wg sync.WaitGroup
+		wg.Add(1)
 		go func() {
 			defer GinkgoRecover()
+			defer wg.Done()
 
 			time.Sleep(2 * timeout)
 
@@ -402,5 +421,23 @@ var _ = Describe("PubSub", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(msg.Channel).To(Equal("mychannel"))
 		Expect(msg.Payload).To(Equal("hello"))
+
+		wg.Wait()
+	})
+
+	It("handles big message payload", func() {
+		pubsub := client.Subscribe("mychannel")
+		defer pubsub.Close()
+
+		ch := pubsub.Channel()
+
+		bigVal := bigVal()
+		err := client.Publish("mychannel", bigVal).Err()
+		Expect(err).NotTo(HaveOccurred())
+
+		var msg *redis.Message
+		Eventually(ch).Should(Receive(&msg))
+		Expect(msg.Channel).To(Equal("mychannel"))
+		Expect(msg.Payload).To(Equal(string(bigVal)))
 	})
 })

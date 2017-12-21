@@ -7,18 +7,17 @@ import (
 	"net/http"
 
 	l4g "github.com/alecthomas/log4go"
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
-func InitWebrtc() {
+func (api *API) InitWebrtc() {
 	l4g.Debug(utils.T("api.webrtc.init.debug"))
 
-	BaseRoutes.Webrtc.Handle("/token", ApiSessionRequired(webrtcToken)).Methods("GET")
+	api.BaseRoutes.Webrtc.Handle("/token", api.ApiSessionRequired(webrtcToken)).Methods("GET")
 }
 
 func webrtcToken(c *Context, w http.ResponseWriter, r *http.Request) {
-	result, err := app.GetWebrtcInfoForSession(c.Session.Id)
+	result, err := c.App.GetWebrtcInfoForSession(c.Session.Id)
 
 	if err != nil {
 		c.Err = err

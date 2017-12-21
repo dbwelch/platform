@@ -101,64 +101,6 @@ func TestIncomingWebhookPreUpdate(t *testing.T) {
 	o.PreUpdate()
 }
 
-func TestIncomingWebhookRequestFromJson_Announcements(t *testing.T) {
-	text := "This message will send a notification to all team members in the channel where you post the message, because it contains: <!channel>"
-	expected := "This message will send a notification to all team members in the channel where you post the message, because it contains: @channel"
-
-	// simple payload
-	payload := `{"text": "` + text + `"}`
-	data := strings.NewReader(payload)
-	iwr := IncomingWebhookRequestFromJson(data)
-
-	if iwr == nil {
-		t.Fatal("IncomingWebhookRequest should not be nil")
-	}
-	if iwr.Text != expected {
-		t.Fatalf("Sample text should be: %s, got: %s", expected, iwr.Text)
-	}
-
-	// payload with attachment (pretext, title, text, value)
-	payload = `{
-			"attachments": [
-				{
-					"pretext": "` + text + `",
-					"title": "` + text + `",
-					"text": "` + text + `",
-					"fields": [
-						{
-							"title": "A title",
-							"value": "` + text + `",
-							"short": false
-						}
-					]
-				}
-			]
-		}`
-
-	data = strings.NewReader(payload)
-	iwr = IncomingWebhookRequestFromJson(data)
-
-	if iwr == nil {
-		t.Fatal("IncomingWebhookRequest should not be nil")
-	}
-
-	attachment := iwr.Attachments[0]
-	if attachment.Pretext != expected {
-		t.Fatalf("Sample attachment pretext should be:%s, got: %s", expected, attachment.Pretext)
-	}
-	if attachment.Text != expected {
-		t.Fatalf("Sample attachment text should be: %s, got: %s", expected, attachment.Text)
-	}
-	if attachment.Title != expected {
-		t.Fatalf("Sample attachment title should be: %s, got: %s", expected, attachment.Title)
-	}
-
-	field := attachment.Fields[0]
-	if field.Value != expected {
-		t.Fatalf("Sample attachment field value should be: %s, got: %s", expected, field.Value)
-	}
-}
-
 func TestIncomingWebhookRequestFromJson(t *testing.T) {
 	texts := []string{
 		`this is a test`,
@@ -213,7 +155,7 @@ func TestIncomingWebhookRequestFromJson(t *testing.T) {
 
 		// try to create an IncomingWebhookRequest from the payload
 		data := strings.NewReader(payload)
-		iwr := IncomingWebhookRequestFromJson(data)
+		iwr, _ := IncomingWebhookRequestFromJson(data)
 
 		// After it has been decoded, the JSON string won't contain the escape char anymore
 		expected := strings.Replace(text, `\"`, `"`, -1)
@@ -233,7 +175,7 @@ func TestIncomingWebhookRequestFromJson(t *testing.T) {
 
 func TestIncomingWebhookNullArrayItems(t *testing.T) {
 	payload := `{"attachments":[{"fields":[{"title":"foo","value":"bar","short":true}, null]}, null]}`
-	iwr := IncomingWebhookRequestFromJson(strings.NewReader(payload))
+	iwr, _ := IncomingWebhookRequestFromJson(strings.NewReader(payload))
 	if iwr == nil {
 		t.Fatal("IncomingWebhookRequest should not be nil")
 	}

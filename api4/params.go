@@ -11,9 +11,11 @@ import (
 )
 
 const (
-	PAGE_DEFAULT     = 0
-	PER_PAGE_DEFAULT = 60
-	PER_PAGE_MAXIMUM = 200
+	PAGE_DEFAULT          = 0
+	PER_PAGE_DEFAULT      = 60
+	PER_PAGE_MAXIMUM      = 200
+	LOGS_PER_PAGE_DEFAULT = 10000
+	LOGS_PER_PAGE_MAXIMUM = 10000
 )
 
 type ApiParams struct {
@@ -24,6 +26,7 @@ type ApiParams struct {
 	ChannelId      string
 	PostId         string
 	FileId         string
+	PluginId       string
 	CommandId      string
 	HookId         string
 	ReportId       string
@@ -39,8 +42,10 @@ type ApiParams struct {
 	Service        string
 	JobId          string
 	JobType        string
+	ActionId       string
 	Page           int
 	PerPage        int
+	LogsPerPage    int
 	Permanent      bool
 }
 
@@ -75,6 +80,10 @@ func ApiParamsFromRequest(r *http.Request) *ApiParams {
 
 	if val, ok := props["file_id"]; ok {
 		params.FileId = val
+	}
+
+	if val, ok := props["plugin_id"]; ok {
+		params.PluginId = val
 	}
 
 	if val, ok := props["command_id"]; ok {
@@ -137,6 +146,10 @@ func ApiParamsFromRequest(r *http.Request) *ApiParams {
 		params.JobType = val
 	}
 
+	if val, ok := props["action_id"]; ok {
+		params.ActionId = val
+	}
+
 	if val, err := strconv.Atoi(r.URL.Query().Get("page")); err != nil || val < 0 {
 		params.Page = PAGE_DEFAULT
 	} else {
@@ -153,6 +166,14 @@ func ApiParamsFromRequest(r *http.Request) *ApiParams {
 		params.PerPage = PER_PAGE_MAXIMUM
 	} else {
 		params.PerPage = val
+	}
+
+	if val, err := strconv.Atoi(r.URL.Query().Get("logs_per_page")); err != nil || val < 0 {
+		params.LogsPerPage = LOGS_PER_PAGE_DEFAULT
+	} else if val > LOGS_PER_PAGE_MAXIMUM {
+		params.LogsPerPage = LOGS_PER_PAGE_MAXIMUM
+	} else {
+		params.LogsPerPage = val
 	}
 
 	return params

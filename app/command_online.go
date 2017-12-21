@@ -4,7 +4,7 @@
 package app
 
 import (
-	"github.com/mattermost/platform/model"
+	"github.com/mattermost/mattermost-server/model"
 	goi18n "github.com/nicksnyder/go-i18n/i18n"
 )
 
@@ -23,7 +23,7 @@ func (me *OnlineProvider) GetTrigger() string {
 	return CMD_ONLINE
 }
 
-func (me *OnlineProvider) GetCommand(T goi18n.TranslateFunc) *model.Command {
+func (me *OnlineProvider) GetCommand(a *App, T goi18n.TranslateFunc) *model.Command {
 	return &model.Command{
 		Trigger:          CMD_ONLINE,
 		AutoComplete:     true,
@@ -32,8 +32,8 @@ func (me *OnlineProvider) GetCommand(T goi18n.TranslateFunc) *model.Command {
 	}
 }
 
-func (me *OnlineProvider) DoCommand(args *model.CommandArgs, message string) *model.CommandResponse {
-	SetStatusOnline(args.UserId, args.Session.Id, true)
+func (me *OnlineProvider) DoCommand(a *App, args *model.CommandArgs, message string) *model.CommandResponse {
+	a.SetStatusOnline(args.UserId, args.Session.Id, true)
 
 	return &model.CommandResponse{ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL, Text: args.T("api.command_online.success")}
 }

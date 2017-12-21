@@ -4,28 +4,32 @@
 package api4
 
 import (
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
 	"testing"
+
+	"github.com/mattermost/mattermost-server/model"
 )
 
 func TestHelpCommand(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
+
 	Client := th.Client
 	channel := th.BasicChannel
 
-	HelpLink := *utils.Cfg.SupportSettings.HelpLink
+	HelpLink := *th.App.Config().SupportSettings.HelpLink
 	defer func() {
-		*utils.Cfg.SupportSettings.HelpLink = HelpLink
+		th.App.UpdateConfig(func(cfg *model.Config) { *cfg.SupportSettings.HelpLink = HelpLink })
 	}()
 
-	*utils.Cfg.SupportSettings.HelpLink = ""
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.SupportSettings.HelpLink = "" })
 	rs1, _ := Client.ExecuteCommand(channel.Id, "/help ")
 	if rs1.GotoLocation != model.SUPPORT_SETTINGS_DEFAULT_HELP_LINK {
 		t.Fatal("failed to default help link")
 	}
 
-	*utils.Cfg.SupportSettings.HelpLink = "https://docs.mattermost.com/guides/user.html"
+	th.App.UpdateConfig(func(cfg *model.Config) {
+		*cfg.SupportSettings.HelpLink = "https://docs.mattermost.com/guides/user.html"
+	})
 	rs2, _ := Client.ExecuteCommand(channel.Id, "/help ")
 	if rs2.GotoLocation != "https://docs.mattermost.com/guides/user.html" {
 		t.Fatal("failed to help link")

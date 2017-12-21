@@ -6,6 +6,8 @@ package model
 import (
 	"encoding/json"
 	"io"
+	"io/ioutil"
+	"strings"
 )
 
 const (
@@ -14,12 +16,14 @@ const (
 )
 
 type CommandResponse struct {
-	ResponseType string           `json:"response_type"`
-	Text         string           `json:"text"`
-	Username     string           `json:"username"`
-	IconURL      string           `json:"icon_url"`
-	GotoLocation string           `json:"goto_location"`
-	Attachments  SlackAttachments `json:"attachments"`
+	ResponseType string             `json:"response_type"`
+	Text         string             `json:"text"`
+	Username     string             `json:"username"`
+	IconURL      string             `json:"icon_url"`
+	Type         string             `json:"type"`
+	Props        StringInterface    `json:"props"`
+	GotoLocation string             `json:"goto_location"`
+	Attachments  []*SlackAttachment `json:"attachments"`
 }
 
 func (o *CommandResponse) ToJson() string {
@@ -31,6 +35,22 @@ func (o *CommandResponse) ToJson() string {
 	}
 }
 
+func CommandResponseFromHTTPBody(contentType string, body io.Reader) *CommandResponse {
+	if strings.TrimSpace(strings.Split(contentType, ";")[0]) == "application/json" {
+		return CommandResponseFromJson(body)
+	}
+	if b, err := ioutil.ReadAll(body); err == nil {
+		return CommandResponseFromPlainText(string(b))
+	}
+	return nil
+}
+
+func CommandResponseFromPlainText(text string) *CommandResponse {
+	return &CommandResponse{
+		Text: text,
+	}
+}
+
 func CommandResponseFromJson(data io.Reader) *CommandResponse {
 	decoder := json.NewDecoder(data)
 	var o CommandResponse
@@ -39,8 +59,7 @@ func CommandResponseFromJson(data io.Reader) *CommandResponse {
 		return nil
 	}
 
-	o.Text = ExpandAnnouncement(o.Text)
-	o.Attachments.Process()
+	o.Attachments = StringifySlackFieldValue(o.Attachments)
 
 	return &o
 }

@@ -4,7 +4,7 @@
 package app
 
 import (
-	"github.com/mattermost/platform/model"
+	"github.com/mattermost/mattermost-server/model"
 
 	goi18n "github.com/nicksnyder/go-i18n/i18n"
 )
@@ -24,7 +24,7 @@ func (me *HeaderProvider) GetTrigger() string {
 	return CMD_HEADER
 }
 
-func (me *HeaderProvider) GetCommand(T goi18n.TranslateFunc) *model.Command {
+func (me *HeaderProvider) GetCommand(a *App, T goi18n.TranslateFunc) *model.Command {
 	return &model.Command{
 		Trigger:          CMD_HEADER,
 		AutoComplete:     true,
@@ -34,17 +34,17 @@ func (me *HeaderProvider) GetCommand(T goi18n.TranslateFunc) *model.Command {
 	}
 }
 
-func (me *HeaderProvider) DoCommand(args *model.CommandArgs, message string) *model.CommandResponse {
-	channel, err := GetChannel(args.ChannelId)
+func (me *HeaderProvider) DoCommand(a *App, args *model.CommandArgs, message string) *model.CommandResponse {
+	channel, err := a.GetChannel(args.ChannelId)
 	if err != nil {
 		return &model.CommandResponse{Text: args.T("api.command_channel_header.channel.app_error"), ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
 	}
 
-	if channel.Type == model.CHANNEL_OPEN && !SessionHasPermissionToChannel(args.Session, args.ChannelId, model.PERMISSION_MANAGE_PUBLIC_CHANNEL_PROPERTIES) {
+	if channel.Type == model.CHANNEL_OPEN && !a.SessionHasPermissionToChannel(args.Session, args.ChannelId, model.PERMISSION_MANAGE_PUBLIC_CHANNEL_PROPERTIES) {
 		return &model.CommandResponse{Text: args.T("api.command_channel_header.permission.app_error"), ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
 	}
 
-	if channel.Type == model.CHANNEL_PRIVATE && !SessionHasPermissionToChannel(args.Session, args.ChannelId, model.PERMISSION_MANAGE_PRIVATE_CHANNEL_PROPERTIES) {
+	if channel.Type == model.CHANNEL_PRIVATE && !a.SessionHasPermissionToChannel(args.Session, args.ChannelId, model.PERMISSION_MANAGE_PRIVATE_CHANNEL_PROPERTIES) {
 		return &model.CommandResponse{Text: args.T("api.command_channel_header.permission.app_error"), ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
 	}
 
@@ -57,7 +57,7 @@ func (me *HeaderProvider) DoCommand(args *model.CommandArgs, message string) *mo
 	}
 	*patch.Header = message
 
-	_, err = PatchChannel(channel, patch, args.UserId)
+	_, err = a.PatchChannel(channel, patch, args.UserId)
 	if err != nil {
 		return &model.CommandResponse{Text: args.T("api.command_channel_header.update_channel.app_error"), ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
 	}

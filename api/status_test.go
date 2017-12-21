@@ -8,14 +8,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/store"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/store"
 )
 
 func TestStatuses(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
+
 	Client := th.BasicClient
 	WebSocketClient, err := th.CreateWebSocketClient()
 	if err != nil {
@@ -34,13 +34,13 @@ func TestStatuses(t *testing.T) {
 
 	user := model.User{Email: strings.ToLower(model.NewId()) + "success+test@simulator.amazonses.com", Nickname: "Corey Hulen", Password: "passwd1"}
 	ruser := Client.Must(Client.CreateUser(&user, "")).Data.(*model.User)
-	LinkUserToTeam(ruser, rteam.Data.(*model.Team))
-	store.Must(app.Srv.Store.User().VerifyEmail(ruser.Id))
+	th.LinkUserToTeam(ruser, rteam.Data.(*model.Team))
+	store.Must(th.App.Srv.Store.User().VerifyEmail(ruser.Id))
 
 	user2 := model.User{Email: strings.ToLower(model.NewId()) + "success+test@simulator.amazonses.com", Nickname: "Corey Hulen", Password: "passwd1"}
 	ruser2 := Client.Must(Client.CreateUser(&user2, "")).Data.(*model.User)
-	LinkUserToTeam(ruser2, rteam.Data.(*model.Team))
-	store.Must(app.Srv.Store.User().VerifyEmail(ruser2.Id))
+	th.LinkUserToTeam(ruser2, rteam.Data.(*model.Team))
+	store.Must(th.App.Srv.Store.User().VerifyEmail(ruser2.Id))
 
 	Client.Login(user.Email, user.Password)
 	Client.SetTeamId(team.Id)
@@ -138,18 +138,18 @@ func TestStatuses(t *testing.T) {
 
 	WebSocketClient2.Close()
 
-	app.SetStatusAwayIfNeeded(th.BasicUser.Id, false)
+	th.App.SetStatusAwayIfNeeded(th.BasicUser.Id, false)
 
-	awayTimeout := *utils.Cfg.TeamSettings.UserStatusAwayTimeout
+	awayTimeout := *th.App.Config().TeamSettings.UserStatusAwayTimeout
 	defer func() {
-		*utils.Cfg.TeamSettings.UserStatusAwayTimeout = awayTimeout
+		th.App.UpdateConfig(func(cfg *model.Config) { *cfg.TeamSettings.UserStatusAwayTimeout = awayTimeout })
 	}()
-	*utils.Cfg.TeamSettings.UserStatusAwayTimeout = 1
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.TeamSettings.UserStatusAwayTimeout = 1 })
 
 	time.Sleep(1500 * time.Millisecond)
 
-	app.SetStatusAwayIfNeeded(th.BasicUser.Id, false)
-	app.SetStatusOnline(th.BasicUser.Id, "junk", false)
+	th.App.SetStatusAwayIfNeeded(th.BasicUser.Id, false)
+	th.App.SetStatusOnline(th.BasicUser.Id, "junk", false)
 
 	time.Sleep(1500 * time.Millisecond)
 
@@ -205,8 +205,9 @@ func TestStatuses(t *testing.T) {
 }
 
 func TestGetStatusesByIds(t *testing.T) {
-	ReloadConfigForSetup()
 	th := Setup().InitBasic()
+	defer th.TearDown()
+
 	Client := th.BasicClient
 
 	if result, err := Client.GetStatusesByIds([]string{th.BasicUser.Id}); err != nil {

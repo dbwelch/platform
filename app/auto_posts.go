@@ -5,10 +5,11 @@ package app
 
 import (
 	"bytes"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
 	"io"
 	"os"
+
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
 type AutoPostCreator struct {
@@ -43,6 +44,9 @@ func (cfg *AutoPostCreator) UploadTestFile() ([]string, bool) {
 
 	path, _ := utils.FindDir("web/static/images")
 	file, err := os.Open(path + "/" + filename)
+	if err != nil {
+		return nil, false
+	}
 	defer file.Close()
 
 	data := &bytes.Buffer{}
@@ -64,7 +68,7 @@ func (cfg *AutoPostCreator) CreateRandomPost() (*model.Post, bool) {
 	if cfg.HasImage {
 		var err1 bool
 		fileIds, err1 = cfg.UploadTestFile()
-		if err1 == false {
+		if !err1 {
 			return nil, false
 		}
 	}
@@ -94,7 +98,7 @@ func (cfg *AutoPostCreator) CreateTestPosts(rangePosts utils.Range) ([]*model.Po
 	for i := 0; i < numPosts; i++ {
 		var err bool
 		posts[i], err = cfg.CreateRandomPost()
-		if err != true {
+		if !err {
 			return posts, false
 		}
 	}

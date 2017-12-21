@@ -1,7 +1,6 @@
 .PHONY: build package run stop run-client run-server stop-client stop-server restart restart-server restart-client start-docker clean-dist clean nuke check-style check-client-style check-server-style check-unit-tests test dist setup-mac prepare-enteprise run-client-tests setup-run-client-tests cleanup-run-client-tests test-client build-linux build-osx build-windows internal-test-web-client vet run-server-for-web-client-tests
 
-# For golang 1.5.x compatibility (remove when we don't want to support it anymore)
-export GO15VENDOREXPERIMENT=1
+ROOT := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 
 # Build Flags
 BUILD_NUMBER ?= $(BUILD_NUMBER:)
@@ -29,21 +28,35 @@ else
 	BUILD_ENTERPRISE_READY = false
 	BUILD_TYPE_NAME = team
 endif
-BUILD_WEBAPP_DIR = ./webapp
+BUILD_WEBAPP_DIR ?= ../mattermost-webapp
+BUILD_CLIENT = false
+BUILD_HASH_CLIENT = independant
+ifneq ($(wildcard $(BUILD_WEBAPP_DIR)/.),)
+	ifeq ($(BUILD_CLIENT),true)
+		BUILD_CLIENT = true
+		BUILD_HASH_CLIENT = $(shell cd $(BUILD_WEBAPP_DIR) && git rev-parse HEAD)
+	else
+		BUILD_CLIENT = false
+	endif
+else
+	BUILD_CLIENT = false
+endif
 
 # Golang Flags
 GOPATH ?= $(GOPATH:):./vendor
 GOFLAGS ?= $(GOFLAGS:)
 GO=go
 GO_LINKER_FLAGS ?= -ldflags \
-				   "-X github.com/mattermost/platform/model.BuildNumber=$(BUILD_NUMBER)\
-				    -X 'github.com/mattermost/platform/model.BuildDate=$(BUILD_DATE)'\
-				    -X github.com/mattermost/platform/model.BuildHash=$(BUILD_HASH)\
-				    -X github.com/mattermost/platform/model.BuildHashEnterprise=$(BUILD_HASH_ENTERPRISE)\
-				    -X github.com/mattermost/platform/model.BuildEnterpriseReady=$(BUILD_ENTERPRISE_READY)"
+				   "-X github.com/mattermost/mattermost-server/model.BuildNumber=$(BUILD_NUMBER)\
+				    -X 'github.com/mattermost/mattermost-server/model.BuildDate=$(BUILD_DATE)'\
+				    -X github.com/mattermost/mattermost-server/model.BuildHash=$(BUILD_HASH)\
+				    -X github.com/mattermost/mattermost-server/model.BuildHashEnterprise=$(BUILD_HASH_ENTERPRISE)\
+				    -X github.com/mattermost/mattermost-server/model.BuildEnterpriseReady=$(BUILD_ENTERPRISE_READY)"
 
 # GOOS/GOARCH of the build host, used to determine whether we're cross-compiling or not
 BUILDER_GOOS_GOARCH="$(shell $(GO) env GOOS)_$(shell $(GO) env GOARCH)"
+
+PLATFORM_FILES=$(shell ls -1 ./cmd/platform/*.go | grep -v _test.go)
 
 # Output paths
 DIST_ROOT=dist
@@ -53,13 +66,22 @@ DIST_PATH=$(DIST_ROOT)/mattermost
 TESTS=.
 
 TESTFLAGS ?= -short
-TESTFLAGSEE ?= -test.short
+TESTFLAGSEE ?= -short
 
 # Packages lists
-TE_PACKAGES=$(shell go list ./... | grep -v vendor)
+TE_PACKAGES=$(shell go list ./...)
 TE_PACKAGES_COMMA=$(shell echo $(TE_PACKAGES) | tr ' ' ',')
 
-EE_PACKAGES=$(shell go list ./enterprise/... | grep -v vendor | tail -n +2)
+# Prepares the enterprise build if exists. The IGNORE stuff is a hack to get the Makefile to execute the commands outside a target
+ifeq ($(BUILD_ENTERPRISE_READY),true)
+	IGNORE:=$(shell echo Enterprise build selected, preparing)
+	IGNORE:=$(shell rm -f imports/imports.go)
+	IGNORE:=$(shell cp $(BUILD_ENTERPRISE_DIR)/imports/imports.go imports/)
+	IGNORE:=$(shell rm -f enterprise)
+	IGNORE:=$(shell ln -s $(BUILD_ENTERPRISE_DIR) enterprise)
+endif
+
+EE_PACKAGES=$(shell go list ./enterprise/...)
 EE_PACKAGES_COMMA=$(shell echo $(EE_PACKAGES) | tr ' ' ',')
 
 ifeq ($(BUILD_ENTERPRISE_READY),true)
@@ -68,11 +90,12 @@ else
 ALL_PACKAGES_COMMA=$(TE_PACKAGES_COMMA)
 endif
 
-all: run
 
-dist: | check-style test package
+all: run ## Alias for 'run'.
 
-start-docker:
+include build/*.mk
+
+start-docker: ## Starts the docker containers for local development.
 	@echo Starting docker containers
 
 	@if [ $(shell docker ps -a | grep -ci mattermost-mysql) -eq 0 ]; then \
@@ -86,7 +109,7 @@ start-docker:
 
 	@if [ $(shell docker ps -a | grep -ci mattermost-postgres) -eq 0 ]; then \
 		echo starting mattermost-postgres; \
-		docker run --name mattermost-postgres -p 5432:5432 -e POSTGRES_USER=mmuser -e POSTGRES_PASSWORD=mostest \
+		docker run --name mattermost-postgres -p 5432:5432 -e POSTGRES_USER=mmuser -e POSTGRES_PASSWORD=mostest -e POSTGRES_DB=mattermost_test \
 		-d postgres:9.4 > /dev/null; \
 	elif [ $(shell docker ps | grep -ci mattermost-postgres) -eq 0 ]; then \
 		echo restarting mattermost-postgres; \
@@ -99,6 +122,16 @@ start-docker:
 	elif [ $(shell docker ps | grep -ci mattermost-inbucket) -eq 0 ]; then \
 		echo restarting mattermost-inbucket; \
 		docker start mattermost-inbucket > /dev/null; \
+	fi
+
+	@if [ $(shell docker ps -a | grep -ci mattermost-minio) -eq 0 ]; then \
+		echo starting mattermost-minio; \
+		docker run --name mattermost-minio -p 9001:9000 -e "MINIO_ACCESS_KEY=minioaccesskey" \
+		-e "MINIO_SECRET_KEY=miniosecretkey" -d minio/minio:latest server /data > /dev/null; \
+		docker exec -it mattermost-minio /bin/sh -c "mkdir -p /data/mattermost-test" > /dev/null; \
+	elif [ $(shell docker ps | grep -ci mattermost-minio) -eq 0 ]; then \
+		echo restarting mattermost-minio; \
+		docker start mattermost-minio > /dev/null; \
 	fi
 
 ifeq ($(BUILD_ENTERPRISE_READY),true)
@@ -141,7 +174,7 @@ ifeq ($(BUILD_ENTERPRISE_READY),true)
 	fi
 endif
 
-stop-docker:
+stop-docker: ## Stops the docker containers for local development.
 	@echo Stopping docker containers
 
 	@if [ $(shell docker ps -a | grep -ci mattermost-mysql) -eq 1 ]; then \
@@ -164,12 +197,17 @@ stop-docker:
 		docker stop mattermost-inbucket > /dev/null; \
 	fi
 
+		@if [ $(shell docker ps -a | grep -ci mattermost-minio) -eq 1 ]; then \
+    		echo stopping mattermost-minio; \
+    		docker stop mattermost-minio > /dev/null; \
+    	fi
+
 	@if [ $(shell docker ps -a | grep -ci mattermost-elasticsearch) -eq 1 ]; then \
 		echo stopping mattermost-elasticsearch; \
 		docker stop mattermost-elasticsearch > /dev/null; \
 	fi
 
-clean-docker:
+clean-docker: ## Deletes the docker containers for local development.
 	@echo Removing docker containers
 
 	@if [ $(shell docker ps -a | grep -ci mattermost-mysql) -eq 1 ]; then \
@@ -196,31 +234,75 @@ clean-docker:
 		docker rm -v mattermost-inbucket > /dev/null; \
 	fi
 
+	@if [ $(shell docker ps -a | grep -ci mattermost-minio) -eq 1 ]; then \
+		echo removing mattermost-minio; \
+		docker stop mattermost-minio > /dev/null; \
+		docker rm -v mattermost-minio > /dev/null; \
+	fi
+
 	@if [ $(shell docker ps -a | grep -ci mattermost-elasticsearch) -eq 1 ]; then \
 		echo removing mattermost-elasticsearch; \
 		docker stop mattermost-elasticsearch > /dev/null; \
 		docker rm -v mattermost-elasticsearch > /dev/null; \
 	fi
 
-check-client-style:
-	@echo Checking client style
+govet: ## Runs govet against all packages.
+	@echo Running GOVET
+	$(GO) vet $(GOFLAGS) $(TE_PACKAGES) || exit 1
 
-	cd $(BUILD_WEBAPP_DIR) && $(MAKE) check-style
+ifeq ($(BUILD_ENTERPRISE_READY),true)
+	$(GO) vet $(GOFLAGS) $(EE_PACKAGES) || exit 1
+endif
 
-check-server-style: govet
+gofmt: ## Runs gofmt against all packages.
 	@echo Running GOFMT
-	$(eval GOFMT_OUTPUT := $(shell gofmt -d -s api/ model/ store/ utils/ manualtesting/ einterfaces/ cmd/platform/ 2>&1))
-	@echo "$(GOFMT_OUTPUT)"
-	@if [ ! "$(GOFMT_OUTPUT)" ]; then \
-		echo "gofmt success"; \
-	else \
-		echo "gofmt failure"; \
-		exit 1; \
-	fi
 
-check-style: check-client-style check-server-style
+	@for package in $(TE_PACKAGES) $(EE_PACKAGES); do \
+		echo "Checking "$$package; \
+		files=$$(go list -f '{{range .GoFiles}}{{$$.Dir}}/{{.}} {{end}}' $$package); \
+		if [ "$$files" ]; then \
+			gofmt_output=$$(gofmt -d -s $$files 2>&1); \
+			if [ "$$gofmt_output" ]; then \
+				echo "$$gofmt_output"; \
+				echo "gofmt failure"; \
+				exit 1; \
+			fi; \
+		fi; \
+	done
+	@echo "gofmt success"; \
 
-test-te-race: start-docker prepare-enterprise
+store-mocks: ## Creates mock files.
+	go get github.com/vektra/mockery/...
+	GOPATH=$(shell go env GOPATH) $(shell go env GOPATH)/bin/mockery -dir store -all -output store/storetest/mocks -note 'Regenerate this file using `make store-mocks`.'
+
+update-jira-plugin: ## Updates Jira plugin.
+	go get github.com/jteeuwen/go-bindata/...
+	curl -s https://api.github.com/repos/mattermost/mattermost-plugin-jira/releases/latest | grep browser_download_url | grep darwin-amd64 | cut -d '"' -f 4 | wget -qi - -O plugin.tar.gz
+	$(shell go env GOPATH)/bin/go-bindata -pkg jira -o app/plugin/jira/plugin_darwin_amd64.go plugin.tar.gz
+	curl -s https://api.github.com/repos/mattermost/mattermost-plugin-jira/releases/latest | grep browser_download_url | grep linux-amd64 | cut -d '"' -f 4 | wget -qi - -O plugin.tar.gz
+	$(shell go env GOPATH)/bin/go-bindata -pkg jira -o app/plugin/jira/plugin_linux_amd64.go plugin.tar.gz
+	curl -s https://api.github.com/repos/mattermost/mattermost-plugin-jira/releases/latest | grep browser_download_url | grep windows-amd64 | cut -d '"' -f 4 | wget -qi - -O plugin.tar.gz
+	$(shell go env GOPATH)/bin/go-bindata -pkg jira -o app/plugin/jira/plugin_windows_amd64.go plugin.tar.gz
+	rm plugin.tar.gz
+	gofmt -s -w ./app/plugin/jira
+
+update-zoom-plugin: ## Updates Zoom plugin.
+	go get github.com/jteeuwen/go-bindata/...
+	curl -s https://api.github.com/repos/mattermost/mattermost-plugin-zoom/releases/latest | grep browser_download_url | grep darwin-amd64 | cut -d '"' -f 4 | wget -qi - -O plugin.tar.gz
+	$(shell go env GOPATH)/bin/go-bindata -pkg zoom -o app/plugin/zoom/plugin_darwin_amd64.go plugin.tar.gz
+	curl -s https://api.github.com/repos/mattermost/mattermost-plugin-zoom/releases/latest | grep browser_download_url | grep linux-amd64 | cut -d '"' -f 4 | wget -qi - -O plugin.tar.gz
+	$(shell go env GOPATH)/bin/go-bindata -pkg zoom -o app/plugin/zoom/plugin_linux_amd64.go plugin.tar.gz
+	curl -s https://api.github.com/repos/mattermost/mattermost-plugin-zoom/releases/latest | grep browser_download_url | grep windows-amd64 | cut -d '"' -f 4 | wget -qi - -O plugin.tar.gz
+	$(shell go env GOPATH)/bin/go-bindata -pkg zoom -o app/plugin/zoom/plugin_windows_amd64.go plugin.tar.gz
+	rm plugin.tar.gz
+	gofmt -s -w ./app/plugin/zoom
+
+check-licenses: ## Checks license status.
+	./scripts/license-check.sh $(TE_PACKAGES) $(EE_PACKAGES)
+
+check-style: govet gofmt check-licenses ## Runs govet and gofmt against all packages.
+
+test-te-race: ## Checks for race conditions in the team edition.
 	@echo Testing TE race conditions
 
 	@echo "Packages to test: "$(TE_PACKAGES)
@@ -230,7 +312,7 @@ test-te-race: start-docker prepare-enterprise
 		$(GO) test $(GOFLAGS) -race -run=$(TESTS) -test.timeout=4000s $$package || exit 1; \
 	done
 
-test-ee-race: start-docker prepare-enterprise
+test-ee-race: ## Checks for race conditions in the enterprise edition.
 	@echo Testing EE race conditions
 
 ifeq ($(BUILD_ENTERPRISE_READY),true)
@@ -250,226 +332,79 @@ ifeq ($(BUILD_ENTERPRISE_READY),true)
 	rm -f config/*.key
 endif
 
-test-server-race: test-te-race test-ee-race
+test-server-race: test-te-race test-ee-race ## Checks for race conditions.
 
-do-cover-file:
+do-cover-file: ## Creates the test coverage report file.
 	@echo "mode: count" > cover.out
 
-test-te: start-docker prepare-enterprise do-cover-file
+test-te: do-cover-file ## Runs tests in the team edition.
 	@echo Testing TE
-
-
 	@echo "Packages to test: "$(TE_PACKAGES)
+	find . -name 'cprofile*.out' -exec sh -c 'rm "{}"' \;
+	$(GO) test $(GOFLAGS) -run=$(TESTS) $(TESTFLAGS) -v -timeout=2000s -covermode=count -coverpkg=$(ALL_PACKAGES_COMMA) -exec $(ROOT)/scripts/test-xprog.sh $(TE_PACKAGES)
+	find . -name 'cprofile*.out' -exec sh -c 'tail -n +2 {} >> cover.out ; rm "{}"' \;
 
-	@for package in $(TE_PACKAGES); do \
-		echo "Testing "$$package; \
-		$(GO) test $(GOFLAGS) -run=$(TESTS) $(TESTFLAGS) -test.v -test.timeout=2000s -covermode=count -coverprofile=cprofile.out -coverpkg=$(ALL_PACKAGES_COMMA) $$package || exit 1; \
-		if [ -f cprofile.out ]; then \
-			tail -n +2 cprofile.out >> cover.out; \
-			rm cprofile.out; \
-		fi; \
-	done
-
-test-postgres: start-docker prepare-enterprise
-	@echo Testing Postgres
-
-	@sed -i'' -e 's|"DriverName": "mysql"|"DriverName": "postgres"|g' config/config.json
-	@sed -i'' -e 's|"DataSource": "mmuser:mostest@tcp(dockerhost:3306)/mattermost_test?charset=utf8mb4,utf8"|"DataSource": "postgres://mmuser:mostest@dockerhost:5432?sslmode=disable"|g' config/config.json
-
-	$(GO) test $(GOFLAGS) -run=$(TESTS) -test.v -test.timeout=2000s -covermode=count -coverprofile=cprofile.out -coverpkg=$(ALL_PACKAGES_COMMA) github.com/mattermost/platform/store || exit 1; \
-	if [ -f cprofile.out ]; then \
-		tail -n +2 cprofile.out >> cover.out; \
-		rm cprofile.out; \
-	fi; \
-
-	@sed -i'' -e 's|"DataSource": "postgres://mmuser:mostest@dockerhost:5432?sslmode=disable"|"DataSource": "mmuser:mostest@tcp(dockerhost:3306)/mattermost_test?charset=utf8mb4,utf8"|g' config/config.json
-	@sed -i'' -e 's|"DriverName": "postgres"|"DriverName": "mysql"|g' config/config.json
-	@rm config/config.json-e
-
-test-ee: start-docker prepare-enterprise do-cover-file
+test-ee: do-cover-file ## Runs tests in the enterprise edition.
 	@echo Testing EE
 
 ifeq ($(BUILD_ENTERPRISE_READY),true)
 	@echo "Packages to test: "$(EE_PACKAGES)
-
-	for package in $(EE_PACKAGES); do \
-		echo "Testing "$$package; \
-		$(GO) test $(GOFLAGS) -run=$(TESTS) -covermode=count -coverpkg=$(ALL_PACKAGES_COMMA) -c $$package; \
-		if [ -f $$(basename $$package).test ]; then \
-			echo "Testing "$$package; \
-			./$$(basename $$package).test -test.v $(TESTFLAGSEE) -test.timeout=2000s -test.coverprofile=cprofile.out || exit 1; \
-			if [ -f cprofile.out ]; then \
-				tail -n +2 cprofile.out >> cover.out; \
-				rm cprofile.out; \
-			fi; \
-			rm -r $$(basename $$package).test; \
-		fi; \
-	done
-
+	find . -name 'cprofile*.out' -exec sh -c 'rm "{}"' \;
+	$(GO) test $(GOFLAGS) -run=$(TESTS) $(TESTFLAGSEE) -p 1 -v -timeout=2000s -covermode=count -coverpkg=$(ALL_PACKAGES_COMMA) -exec $(ROOT)/scripts/test-xprog.sh $(EE_PACKAGES)
+	find . -name 'cprofile*.out' -exec sh -c 'tail -n +2 {} >> cover.out ; rm "{}"' \;
 	rm -f config/*.crt
 	rm -f config/*.key
 endif
 
-test-server: test-te test-ee
+test-server: test-te test-ee ## Runs tests.
 
-internal-test-web-client: start-docker prepare-enterprise
-	$(GO) run $(GOFLAGS) ./cmd/platform/*go test web_client_tests
+internal-test-web-client: ## Runs web client tests.
+	$(GO) run $(GOFLAGS) $(PLATFORM_FILES) test web_client_tests
 
-run-server-for-web-client-tests:
-	$(GO) run $(GOFLAGS) ./cmd/platform/*go test web_client_tests_server
+run-server-for-web-client-tests: ## Tests the server for web client.
+	$(GO) run $(GOFLAGS) $(PLATFORM_FILES) test web_client_tests_server
 
-test-client: start-docker prepare-enterprise
+test-client: ## Test client app.
 	@echo Running client tests
 
 	cd $(BUILD_WEBAPP_DIR) && $(MAKE) test
 
-test: test-server test-client
+test: test-server test-client ## Runs all checks and tests below (except race detection and postgres).
 
-cover:
+cover: ## Runs the golang coverage tool. You must run the unit tests first.
 	@echo Opening coverage info in browser. If this failed run make test first
 
 	$(GO) tool cover -html=cover.out
 	$(GO) tool cover -html=ecover.out
 
-.prebuild:
-	@echo Preparation for running go code
-	go get $(GOFLAGS) github.com/Masterminds/glide
-
-	touch $@
-
-prepare-enterprise:
-ifeq ($(BUILD_ENTERPRISE_READY),true)
-	@echo Enterprise build selected, preparing
-	mkdir -p imports/
-	cp $(BUILD_ENTERPRISE_DIR)/imports/imports.go imports/
-	rm -f enterprise
-	ln -s $(BUILD_ENTERPRISE_DIR) enterprise
-endif
-
-build-linux: .prebuild prepare-enterprise
-	@echo Build Linux amd64
-	env GOOS=linux GOARCH=amd64 $(GO) install $(GOFLAGS) $(GO_LINKER_FLAGS) ./cmd/platform
-
-build-osx: .prebuild prepare-enterprise
-	@echo Build OSX amd64
-	env GOOS=darwin GOARCH=amd64 $(GO) install $(GOFLAGS) $(GO_LINKER_FLAGS) ./cmd/platform
-
-build-windows: .prebuild prepare-enterprise
-	@echo Build Windows amd64
-	env GOOS=windows GOARCH=amd64 $(GO) install $(GOFLAGS) $(GO_LINKER_FLAGS) ./cmd/platform
-
-build: build-linux build-windows build-osx
-
-build-client:
-	@echo Building mattermost web app
-
-	cd $(BUILD_WEBAPP_DIR) && $(MAKE) build
-
-package: build build-client
-	@ echo Packaging mattermost
-
-	@# Remove any old files
-	rm -Rf $(DIST_ROOT)
-
-	@# Create needed directories
-	mkdir -p $(DIST_PATH)/bin
-	mkdir -p $(DIST_PATH)/logs
-
-	@# Resource directories
-	cp -RL config $(DIST_PATH)
-	cp -RL fonts $(DIST_PATH)
-	cp -RL templates $(DIST_PATH)
-	cp -RL i18n $(DIST_PATH)
-
-	@# Disable developer settings
-	sed -i'' -e 's|"ConsoleLevel": "DEBUG"|"ConsoleLevel": "INFO"|g' $(DIST_PATH)/config/config.json
-	sed -i'' -e 's|"SiteURL": "http://localhost:8065"|"SiteURL": ""|g' $(DIST_PATH)/config/config.json
-
-	@# Reset email sending to original configuration
-	sed -i'' -e 's|"SendEmailNotifications": true,|"SendEmailNotifications": false,|g' $(DIST_PATH)/config/config.json
-	sed -i'' -e 's|"FeedbackEmail": "test@example.com",|"FeedbackEmail": "",|g' $(DIST_PATH)/config/config.json
-	sed -i'' -e 's|"SMTPServer": "dockerhost",|"SMTPServer": "",|g' $(DIST_PATH)/config/config.json
-	sed -i'' -e 's|"SMTPPort": "2500",|"SMTPPort": "",|g' $(DIST_PATH)/config/config.json
-
-	@# Package webapp
-	mkdir -p $(DIST_PATH)/webapp/dist
-	cp -RL $(BUILD_WEBAPP_DIR)/dist $(DIST_PATH)/webapp
-
-	@# Help files
-ifeq ($(BUILD_ENTERPRISE_READY),true)
-	cp $(BUILD_ENTERPRISE_DIR)/ENTERPRISE-EDITION-LICENSE.txt $(DIST_PATH)
-else
-	cp build/MIT-COMPILED-LICENSE.md $(DIST_PATH)
-endif
-	cp NOTICE.txt $(DIST_PATH)
-	cp README.md $(DIST_PATH)
-
-	@# ----- PLATFORM SPECIFIC -----
-
-	@# Make osx package
-	@# Copy binary
-ifeq ($(BUILDER_GOOS_GOARCH),"darwin_amd64")
-	cp $(GOPATH)/bin/platform $(DIST_PATH)/bin # from native bin dir, not cross-compiled
-else
-	cp $(GOPATH)/bin/darwin_amd64/platform $(DIST_PATH)/bin # from cross-compiled bin dir
-endif
-	@# Package
-	tar -C dist -czf $(DIST_PATH)-$(BUILD_TYPE_NAME)-osx-amd64.tar.gz mattermost
-	@# Cleanup
-	rm -f $(DIST_PATH)/bin/platform
-
-	@# Make windows package
-	@# Copy binary
-ifeq ($(BUILDER_GOOS_GOARCH),"windows_amd64")
-	cp $(GOPATH)/bin/platform.exe $(DIST_PATH)/bin # from native bin dir, not cross-compiled
-else
-	cp $(GOPATH)/bin/windows_amd64/platform.exe $(DIST_PATH)/bin # from cross-compiled bin dir
-endif
-	@# Package
-	cd $(DIST_ROOT) && zip -9 -r -q -l mattermost-$(BUILD_TYPE_NAME)-windows-amd64.zip mattermost && cd ..
-	@# Cleanup
-	rm -f $(DIST_PATH)/bin/platform.exe
-
-	@# Make linux package
-	@# Copy binary
-ifeq ($(BUILDER_GOOS_GOARCH),"linux_amd64")
-	cp $(GOPATH)/bin/platform $(DIST_PATH)/bin # from native bin dir, not cross-compiled
-else
-	cp $(GOPATH)/bin/linux_amd64/platform $(DIST_PATH)/bin # from cross-compiled bin dir
-endif
-	@# Package
-	tar -C dist -czf $(DIST_PATH)-$(BUILD_TYPE_NAME)-linux-amd64.tar.gz mattermost
-	@# Don't clean up native package so dev machines will have an unzipped package available
-	@#rm -f $(DIST_PATH)/bin/platform
-
-
-run-server: prepare-enterprise start-docker
+run-server: start-docker ## Starts the server.
 	@echo Running mattermost for development
 
 	mkdir -p $(BUILD_WEBAPP_DIR)/dist/files
-	$(GO) run $(GOFLAGS) $(GO_LINKER_FLAGS) ./cmd/platform/*.go --disableconfigwatch &
+	$(GO) run $(GOFLAGS) $(GO_LINKER_FLAGS) $(PLATFORM_FILES) --disableconfigwatch &
 
-run-cli: prepare-enterprise start-docker
+run-cli: start-docker ## Runs CLI.
 	@echo Running mattermost for development
 	@echo Example should be like 'make ARGS="-version" run-cli'
 
-	$(GO) run $(GOFLAGS) $(GO_LINKER_FLAGS) ./cmd/platform/*.go ${ARGS}
+	$(GO) run $(GOFLAGS) $(GO_LINKER_FLAGS) $(PLATFORM_FILES) ${ARGS}
 
-run-client:
+run-client: ## Runs the webapp.
 	@echo Running mattermost client for development
 
+	ln -nfs $(BUILD_WEBAPP_DIR)/dist client
 	cd $(BUILD_WEBAPP_DIR) && $(MAKE) run
 
-run-client-fullmap:
+run-client-fullmap: ## Runs the webapp with source code mapping (slower; better debugging).
 	@echo Running mattermost client for development with FULL SOURCE MAP
 
 	cd $(BUILD_WEBAPP_DIR) && $(MAKE) run-fullmap
 
-run: run-server run-client
+run: run-server run-client ## Runs the server and webapp.
 
-run-fullmap: run-server run-client-fullmap
+run-fullmap: run-server run-client-fullmap ## Same as run but with a full sourcemap for client.
 
-stop-server:
+stop-server: ## Stops the server.
 	@echo Stopping mattermost
 
 ifeq ($(BUILDER_GOOS_GOARCH),"windows_amd64")
@@ -486,24 +421,43 @@ else
 	done
 endif
 
-stop-client:
+stop-client: ## Stops the webapp.
 	@echo Stopping mattermost client
 
 	cd $(BUILD_WEBAPP_DIR) && $(MAKE) stop
 
-stop: stop-server stop-client
+stop: stop-server stop-client ## Stops server and client.
 
-restart: restart-server restart-client
+restart: restart-server restart-client ## Restarts the server and webapp.
 
-restart-server: | stop-server run-server
+restart-server: | stop-server run-server ## Restarts the mattermost server to pick up development change.
 
-restart-client: | stop-client run-client
+restart-client: | stop-client run-client ## Restarts the webapp.
 
-run-job-server:
+run-job-server: ## Runs the background job server.
 	@echo Running job server for development
-	$(GO) run $(GOFLAGS) $(GO_LINKER_FLAGS) ./cmd/platform/*.go jobserver --disableconfigwatch &
+	$(GO) run $(GOFLAGS) $(GO_LINKER_FLAGS) $(PLATFORM_FILES) jobserver --disableconfigwatch &
 
-clean: stop-docker
+config-ldap: ## Configures LDAP.
+	@echo Setting up configuration for local LDAP
+
+	@sed -i'' -e 's|"LdapServer": ".*"|"LdapServer": "dockerhost"|g' config/config.json
+	@sed -i'' -e 's|"BaseDN": ".*"|"BaseDN": "ou=testusers,dc=mm,dc=test,dc=com"|g' config/config.json
+	@sed -i'' -e 's|"BindUsername": ".*"|"BindUsername": "cn=admin,dc=mm,dc=test,dc=com"|g' config/config.json
+	@sed -i'' -e 's|"BindPassword": ".*"|"BindPassword": "mostest"|g' config/config.json
+	@sed -i'' -e 's|"FirstNameAttribute": ".*"|"FirstNameAttribute": "cn"|g' config/config.json
+	@sed -i'' -e 's|"LastNameAttribute": ".*"|"LastNameAttribute": "sn"|g' config/config.json
+	@sed -i'' -e 's|"NicknameAttribute": ".*"|"NicknameAttribute": "cn"|g' config/config.json
+	@sed -i'' -e 's|"EmailAttribute": ".*"|"EmailAttribute": "mail"|g' config/config.json
+	@sed -i'' -e 's|"UsernameAttribute": ".*"|"UsernameAttribute": "uid"|g' config/config.json
+	@sed -i'' -e 's|"IdAttribute": ".*"|"IdAttribute": "uid"|g' config/config.json
+
+config-reset: ## Resets the config/config.json file to the default.
+	@echo Resetting configuration to default
+	rm -f config/config.json
+	cp config/default.json config/config.json
+
+clean: stop-docker ## Clean up everything except persistant server data.
 	@echo Cleaning
 
 	rm -Rf $(DIST_ROOT)
@@ -511,69 +465,44 @@ clean: stop-docker
 
 	cd $(BUILD_WEBAPP_DIR) && $(MAKE) clean
 
-	rm -rf api/data
+	find . -type d -name data | xargs rm -r
 	rm -rf logs
 
 	rm -f mattermost.log
+	rm -f mattermost.log.jsonl
 	rm -f npm-debug.log
 	rm -f api/mattermost.log
+	rm -f api/mattermost.log.jsonl
 	rm -f .prepare-go
 	rm -f enterprise
 	rm -f cover.out
 	rm -f ecover.out
 	rm -f *.out
 	rm -f *.test
-	rm -f imports.go
+	rm -f imports/imports.go
+	rm -f cmd/platform/cprofile*.out
 
-nuke: clean clean-docker
+nuke: clean clean-docker ## Clean plus removes persistant server data.
 	@echo BOOM
 
 	rm -rf data
 
-setup-mac:
+setup-mac: ## Adds macOS hosts entries for Docker.
 	echo $$(boot2docker ip 2> /dev/null) dockerhost | sudo tee -a /etc/hosts
 
-govet:
-	@echo Running GOVET
 
-	$(GO) vet $(GOFLAGS) ./api || exit 1
-	$(GO) vet $(GOFLAGS) ./api4 || exit 1
-	$(GO) vet $(GOFLAGS) ./app || exit 1
-	$(GO) vet $(GOFLAGS) ./cmd/platform || exit 1
-	$(GO) vet $(GOFLAGS) ./einterfaces || exit 1
-	$(GO) vet $(GOFLAGS) ./jobs || exit 1
-	$(GO) vet $(GOFLAGS) ./manualtesting || exit 1
-	$(GO) vet $(GOFLAGS) ./model || exit 1
-	$(GO) vet $(GOFLAGS) ./model/gitlab || exit 1
-	$(GO) vet $(GOFLAGS) ./store || exit 1
-	$(GO) vet $(GOFLAGS) ./utils || exit 1
-	$(GO) vet $(GOFLAGS) ./web || exit 1
-
+todo: ## Display TODO and FIXME items in the source code.
+	@! ag --ignore Makefile --ignore-dir vendor --ignore-dir runtime TODO
+	@! ag --ignore Makefile --ignore-dir vendor --ignore-dir runtime XXX
+	@! ag --ignore Makefile --ignore-dir vendor --ignore-dir runtime FIXME
+	@! ag --ignore Makefile --ignore-dir vendor --ignore-dir runtime "FIX ME"
 ifeq ($(BUILD_ENTERPRISE_READY),true)
-	$(GO) vet $(GOFLAGS) ./enterprise/account_migration || exit 1
-	$(GO) vet $(GOFLAGS) ./enterprise/brand || exit 1
-	$(GO) vet $(GOFLAGS) ./enterprise/cluster || exit 1
-	$(GO) vet $(GOFLAGS) ./enterprise/compliance || exit 1
-	$(GO) vet $(GOFLAGS) ./enterprise/data_retention || exit 1
-	$(GO) vet $(GOFLAGS) ./enterprise/elasticsearch || exit 1
-	$(GO) vet $(GOFLAGS) ./enterprise/emoji || exit 1
-	$(GO) vet $(GOFLAGS) ./enterprise/imports || exit 1
-	$(GO) vet $(GOFLAGS) ./enterprise/ldap || exit 1
-	$(GO) vet $(GOFLAGS) ./enterprise/metrics || exit 1
-	$(GO) vet $(GOFLAGS) ./enterprise/mfa || exit 1
-	$(GO) vet $(GOFLAGS) ./enterprise/oauth/google || exit 1
-	$(GO) vet $(GOFLAGS) ./enterprise/oauth/office365 || exit 1
-	$(GO) vet $(GOFLAGS) ./enterprise/saml || exit 1
+	@! ag --ignore Makefile --ignore-dir vendor --ignore-dir runtime TODO enterprise/
+	@! ag --ignore Makefile --ignore-dir vendor --ignore-dir runtime XXX enterprise/
+	@! ag --ignore Makefile --ignore-dir vendor --ignore-dir runtime FIXME enterprise/
+	@! ag --ignore Makefile --ignore-dir vendor --ignore-dir runtime "FIX ME" enterprise/
 endif
 
-todo:
-	@! ag --ignore Makefile --ignore-dir vendor --ignore-dir runtime --ignore-dir webapp/non_npm_dependencies/ TODO
-	@! ag --ignore Makefile --ignore-dir vendor --ignore-dir runtime --ignore-dir webapp/non_npm_dependencies/ XXX
-	@! ag --ignore Makefile --ignore-dir vendor --ignore-dir runtime --ignore-dir webapp/non_npm_dependencies/ FIXME
-	@! ag --ignore Makefile --ignore-dir vendor --ignore-dir runtime --ignore-dir webapp/non_npm_dependencies/ "FIX ME"
-ifeq ($(BUILD_ENTERPRISE_READY),true)
-	@! ag --ignore Makefile --ignore-dir vendor --ignore-dir runtime --ignore-dir webapp/non_npm_dependencies/ TODO enterprise/
-	@! ag --ignore Makefile --ignore-dir vendor --ignore-dir runtime --ignore-dir webapp/non_npm_dependencies/ XXX enterprise/
-	@! ag --ignore Makefile --ignore-dir vendor --ignore-dir runtime --ignore-dir webapp/non_npm_dependencies/ FIXME enterprise/
-	@! ag --ignore Makefile --ignore-dir vendor --ignore-dir runtime --ignore-dir webapp/non_npm_dependencies/ "FIX ME" enterprise/
-endif
+## Help documentatin à la https://marmelab.com/blog/2016/02/29/auto-documented-makefile.html
+help:
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' ./Makefile | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'

@@ -28,13 +28,13 @@ type IncomingWebhook struct {
 }
 
 type IncomingWebhookRequest struct {
-	Text        string           `json:"text"`
-	Username    string           `json:"username"`
-	IconURL     string           `json:"icon_url"`
-	ChannelName string           `json:"channel"`
-	Props       StringInterface  `json:"props"`
-	Attachments SlackAttachments `json:"attachments"`
-	Type        string           `json:"type"`
+	Text        string             `json:"text"`
+	Username    string             `json:"username"`
+	IconURL     string             `json:"icon_url"`
+	ChannelName string             `json:"channel"`
+	Props       StringInterface    `json:"props"`
+	Attachments []*SlackAttachment `json:"attachments"`
+	Type        string             `json:"type"`
 }
 
 func (o *IncomingWebhook) ToJson() string {
@@ -193,7 +193,7 @@ func decodeIncomingWebhookRequest(by []byte) (*IncomingWebhookRequest, error) {
 	}
 }
 
-func IncomingWebhookRequestFromJson(data io.Reader) *IncomingWebhookRequest {
+func IncomingWebhookRequestFromJson(data io.Reader) (*IncomingWebhookRequest, *AppError) {
 	buf := new(bytes.Buffer)
 	buf.ReadFrom(data)
 	by := buf.Bytes()
@@ -204,12 +204,11 @@ func IncomingWebhookRequestFromJson(data io.Reader) *IncomingWebhookRequest {
 	if err != nil {
 		o, err = decodeIncomingWebhookRequest(escapeControlCharsFromPayload(by))
 		if err != nil {
-			return nil
+			return nil, NewAppError("IncomingWebhookRequestFromJson", "Unable to parse incoming data", nil, err.Error(), http.StatusBadRequest)
 		}
 	}
 
-	o.Text = ExpandAnnouncement(o.Text)
-	o.Attachments.Process()
+	o.Attachments = StringifySlackFieldValue(o.Attachments)
 
-	return o
+	return o, nil
 }

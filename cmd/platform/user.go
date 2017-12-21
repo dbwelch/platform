@@ -6,10 +6,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/einterfaces"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/app"
+	"github.com/mattermost/mattermost-server/model"
 	"github.com/spf13/cobra"
 )
 
@@ -37,12 +35,11 @@ var userDeactivateCmd = &cobra.Command{
 }
 
 var userCreateCmd = &cobra.Command{
-	Use:   "create",
-	Short: "Create a user",
-	Long:  "Create a user",
-	Example: `  user create --email user@example.com --username userexample --password Password1
-  user create --firstname Joe --system_admin --email joe@example.com --username joe --password Password1`,
-	RunE: userCreateCmdF,
+	Use:     "create",
+	Short:   "Create a user",
+	Long:    "Create a user",
+	Example: `  user create --email user@example.com --username userexample --password Password1`,
+	RunE:    userCreateCmdF,
 }
 
 var userInviteCmd = &cobra.Command{
@@ -86,7 +83,7 @@ var deleteAllUsersCmd = &cobra.Command{
 	Short:   "Delete all users and all posts",
 	Long:    "Permanently delete all users and all related information including posts.",
 	Example: "  user deleteall",
-	RunE:    deleteUserCmdF,
+	RunE:    deleteAllUsersCommandF,
 }
 
 var migrateAuthCmd = &cobra.Command{
@@ -128,14 +125,14 @@ var searchUserCmd = &cobra.Command{
 }
 
 func init() {
-	userCreateCmd.Flags().String("username", "", "Username")
-	userCreateCmd.Flags().String("email", "", "Email")
-	userCreateCmd.Flags().String("password", "", "Password")
-	userCreateCmd.Flags().String("nickname", "", "Nickname")
-	userCreateCmd.Flags().String("firstname", "", "First Name")
-	userCreateCmd.Flags().String("lastname", "", "Last Name")
-	userCreateCmd.Flags().String("locale", "", "Locale (ex: en, fr)")
-	userCreateCmd.Flags().Bool("system_admin", false, "Make the user a system administrator")
+	userCreateCmd.Flags().String("username", "", "Required. Username for the new user account.")
+	userCreateCmd.Flags().String("email", "", "Required. The email address for the new user account.")
+	userCreateCmd.Flags().String("password", "", "Required. The password for the new user account.")
+	userCreateCmd.Flags().String("nickname", "", "Optional. The nickname for the new user account.")
+	userCreateCmd.Flags().String("firstname", "", "Optional. The first name for the new user account.")
+	userCreateCmd.Flags().String("lastname", "", "Optional. The last name for the new user account.")
+	userCreateCmd.Flags().String("locale", "", "Optional. The locale (ex: en, fr) for the new user account.")
+	userCreateCmd.Flags().Bool("system_admin", false, "Optional. If supplied, the new user will be a system administrator. Defaults to false.")
 
 	deleteUserCmd.Flags().Bool("confirm", false, "Confirm you really want to delete the user and a DB backup has been performed.")
 
@@ -159,22 +156,23 @@ func init() {
 }
 
 func userActivateCmdF(cmd *cobra.Command, args []string) error {
-	if err := initDBCommandContextCobra(cmd); err != nil {
+	a, err := initDBCommandContextCobra(cmd)
+	if err != nil {
 		return err
 	}
 
 	if len(args) < 1 {
-		return errors.New("Enter user(s) to activate.")
+		return errors.New("Expected at least one argument. See help text for details.")
 	}
 
-	changeUsersActiveStatus(args, true)
+	changeUsersActiveStatus(a, args, true)
 	return nil
 }
 
-func changeUsersActiveStatus(userArgs []string, active bool) {
-	users := getUsersFromUserArgs(userArgs)
+func changeUsersActiveStatus(a *app.App, userArgs []string, active bool) {
+	users := getUsersFromUserArgs(a, userArgs)
 	for i, user := range users {
-		err := changeUserActiveStatus(user, userArgs[i], active)
+		err := changeUserActiveStatus(a, user, userArgs[i], active)
 
 		if err != nil {
 			CommandPrintErrorln(err.Error())
@@ -182,14 +180,14 @@ func changeUsersActiveStatus(userArgs []string, active bool) {
 	}
 }
 
-func changeUserActiveStatus(user *model.User, userArg string, activate bool) error {
+func changeUserActiveStatus(a *app.App, user *model.User, userArg string, activate bool) error {
 	if user == nil {
 		return fmt.Errorf("Can't find user '%v'", userArg)
 	}
-	if user.IsLDAPUser() {
-		return errors.New(utils.T("api.user.update_active.no_deactivate_ldap.app_error"))
+	if user.IsSSOUser() {
+		fmt.Println("You must also deactivate this user in the SSO provider or they will be reactivated on next login or sync.")
 	}
-	if _, err := app.UpdateActive(user, activate); err != nil {
+	if _, err := a.UpdateActive(user, activate); err != nil {
 		return fmt.Errorf("Unable to change activation status of user: %v", userArg)
 	}
 
@@ -197,20 +195,22 @@ func changeUserActiveStatus(user *model.User, userArg string, activate bool) err
 }
 
 func userDeactivateCmdF(cmd *cobra.Command, args []string) error {
-	if err := initDBCommandContextCobra(cmd); err != nil {
+	a, err := initDBCommandContextCobra(cmd)
+	if err != nil {
 		return err
 	}
 
 	if len(args) < 1 {
-		return errors.New("Enter user(s) to deactivate.")
+		return errors.New("Expected at least one argument. See help text for details.")
 	}
 
-	changeUsersActiveStatus(args, false)
+	changeUsersActiveStatus(a, args, false)
 	return nil
 }
 
 func userCreateCmdF(cmd *cobra.Command, args []string) error {
-	if err := initDBCommandContextCobra(cmd); err != nil {
+	a, err := initDBCommandContextCobra(cmd)
+	if err != nil {
 		return err
 	}
 
@@ -230,7 +230,7 @@ func userCreateCmdF(cmd *cobra.Command, args []string) error {
 	firstname, _ := cmd.Flags().GetString("firstname")
 	lastname, _ := cmd.Flags().GetString("lastname")
 	locale, _ := cmd.Flags().GetString("locale")
-	system_admin, _ := cmd.Flags().GetBool("system_admin")
+	systemAdmin, _ := cmd.Flags().GetBool("system_admin")
 
 	user := &model.User{
 		Username:  username,
@@ -242,13 +242,10 @@ func userCreateCmdF(cmd *cobra.Command, args []string) error {
 		Locale:    locale,
 	}
 
-	ruser, err := app.CreateUser(user)
-	if err != nil {
+	if ruser, err := a.CreateUser(user); err != nil {
 		return errors.New("Unable to create user. Error: " + err.Error())
-	}
-
-	if system_admin {
-		app.UpdateUserRoles(ruser.Id, "system_user system_admin")
+	} else if systemAdmin {
+		a.UpdateUserRoles(ruser.Id, "system_user system_admin", false)
 	}
 
 	CommandPrettyPrintln("Created User")
@@ -257,14 +254,13 @@ func userCreateCmdF(cmd *cobra.Command, args []string) error {
 }
 
 func userInviteCmdF(cmd *cobra.Command, args []string) error {
-	if err := initDBCommandContextCobra(cmd); err != nil {
+	a, err := initDBCommandContextCobra(cmd)
+	if err != nil {
 		return err
 	}
 
-	utils.InitHTML()
-
 	if len(args) < 2 {
-		return errors.New("Not enough arguments.")
+		return errors.New("Expected at least two arguments. See help text for details.")
 	}
 
 	email := args[0]
@@ -272,9 +268,9 @@ func userInviteCmdF(cmd *cobra.Command, args []string) error {
 		return errors.New("Invalid email")
 	}
 
-	teams := getTeamsFromTeamArgs(args[1:])
+	teams := getTeamsFromTeamArgs(a, args[1:])
 	for i, team := range teams {
-		err := inviteUser(email, team, args[i+1])
+		err := inviteUser(a, email, team, args[i+1])
 
 		if err != nil {
 			CommandPrintErrorln(err.Error())
@@ -284,34 +280,35 @@ func userInviteCmdF(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func inviteUser(email string, team *model.Team, teamArg string) error {
+func inviteUser(a *app.App, email string, team *model.Team, teamArg string) error {
 	invites := []string{email}
 	if team == nil {
 		return fmt.Errorf("Can't find team '%v'", teamArg)
 	}
 
-	app.SendInviteEmails(team, "Administrator", invites, *utils.Cfg.ServiceSettings.SiteURL)
+	a.SendInviteEmails(team, "Administrator", invites, *a.Config().ServiceSettings.SiteURL)
 	CommandPrettyPrintln("Invites may or may not have been sent.")
 
 	return nil
 }
 
 func resetUserPasswordCmdF(cmd *cobra.Command, args []string) error {
-	if err := initDBCommandContextCobra(cmd); err != nil {
+	a, err := initDBCommandContextCobra(cmd)
+	if err != nil {
 		return err
 	}
 
 	if len(args) != 2 {
-		return errors.New("Incorect number of arguments.")
+		return errors.New("Expected two arguments. See help text for details.")
 	}
 
-	user := getUserFromUserArg(args[0])
+	user := getUserFromUserArg(a, args[0])
 	if user == nil {
 		return errors.New("Unable to find user '" + args[0] + "'")
 	}
 	password := args[1]
 
-	if result := <-app.Srv.Store.User().UpdatePassword(user.Id, model.HashPassword(password)); result.Err != nil {
+	if result := <-a.Srv.Store.User().UpdatePassword(user.Id, model.HashPassword(password)); result.Err != nil {
 		return result.Err
 	}
 
@@ -319,22 +316,23 @@ func resetUserPasswordCmdF(cmd *cobra.Command, args []string) error {
 }
 
 func resetUserMfaCmdF(cmd *cobra.Command, args []string) error {
-	if err := initDBCommandContextCobra(cmd); err != nil {
+	a, err := initDBCommandContextCobra(cmd)
+	if err != nil {
 		return err
 	}
 
 	if len(args) < 1 {
-		return errors.New("Enter at least one user.")
+		return errors.New("Expected at least one argument. See help text for details.")
 	}
 
-	users := getUsersFromUserArgs(args)
+	users := getUsersFromUserArgs(a, args)
 
 	for i, user := range users {
 		if user == nil {
 			return errors.New("Unable to find user '" + args[i] + "'")
 		}
 
-		if err := app.DeactivateMfa(user.Id); err != nil {
+		if err := a.DeactivateMfa(user.Id); err != nil {
 			return err
 		}
 	}
@@ -343,12 +341,13 @@ func resetUserMfaCmdF(cmd *cobra.Command, args []string) error {
 }
 
 func deleteUserCmdF(cmd *cobra.Command, args []string) error {
-	if err := initDBCommandContextCobra(cmd); err != nil {
+	a, err := initDBCommandContextCobra(cmd)
+	if err != nil {
 		return err
 	}
 
 	if len(args) < 1 {
-		return errors.New("Enter at least one user.")
+		return errors.New("Expected at least one argument. See help text for details.")
 	}
 
 	confirmFlag, _ := cmd.Flags().GetBool("confirm")
@@ -360,21 +359,21 @@ func deleteUserCmdF(cmd *cobra.Command, args []string) error {
 		if confirm != "YES" {
 			return errors.New("ABORTED: You did not answer YES exactly, in all capitals.")
 		}
-		CommandPrettyPrintln("Are you sure you want to delete the teams specified?  All data will be permanently deleted? (YES/NO): ")
+		CommandPrettyPrintln("Are you sure you want to permanently delete the specified users? (YES/NO): ")
 		fmt.Scanln(&confirm)
 		if confirm != "YES" {
 			return errors.New("ABORTED: You did not answer YES exactly, in all capitals.")
 		}
 	}
 
-	users := getUsersFromUserArgs(args)
+	users := getUsersFromUserArgs(a, args)
 
 	for i, user := range users {
 		if user == nil {
 			return errors.New("Unable to find user '" + args[i] + "'")
 		}
 
-		if err := app.PermanentDeleteUser(user); err != nil {
+		if err := a.PermanentDeleteUser(user); err != nil {
 			return err
 		}
 	}
@@ -383,12 +382,13 @@ func deleteUserCmdF(cmd *cobra.Command, args []string) error {
 }
 
 func deleteAllUsersCommandF(cmd *cobra.Command, args []string) error {
-	if err := initDBCommandContextCobra(cmd); err != nil {
+	a, err := initDBCommandContextCobra(cmd)
+	if err != nil {
 		return err
 	}
 
 	if len(args) > 0 {
-		return errors.New("Don't enter any agruments.")
+		return errors.New("Expected zero arguments.")
 	}
 
 	confirmFlag, _ := cmd.Flags().GetBool("confirm")
@@ -400,29 +400,29 @@ func deleteAllUsersCommandF(cmd *cobra.Command, args []string) error {
 		if confirm != "YES" {
 			return errors.New("ABORTED: You did not answer YES exactly, in all capitals.")
 		}
-		CommandPrettyPrintln("Are you sure you want to delete the teams specified?  All data will be permanently deleted? (YES/NO): ")
+		CommandPrettyPrintln("Are you sure you want to permanently delete all user accounts? (YES/NO): ")
 		fmt.Scanln(&confirm)
 		if confirm != "YES" {
 			return errors.New("ABORTED: You did not answer YES exactly, in all capitals.")
 		}
 	}
 
-	if err := app.PermanentDeleteAllUsers(); err != nil {
+	if err := a.PermanentDeleteAllUsers(); err != nil {
 		return err
-	} else {
-		CommandPrettyPrintln("Sucsessfull. All users deleted.")
 	}
 
+	CommandPrettyPrintln("All user accounts successfully deleted.")
 	return nil
 }
 
 func migrateAuthCmdF(cmd *cobra.Command, args []string) error {
-	if err := initDBCommandContextCobra(cmd); err != nil {
+	a, err := initDBCommandContextCobra(cmd)
+	if err != nil {
 		return err
 	}
 
 	if len(args) != 3 {
-		return errors.New("Enter the correct number of arguments.")
+		return errors.New("Expected three arguments. See help text for details.")
 	}
 
 	fromAuth := args[0]
@@ -448,34 +448,35 @@ func migrateAuthCmdF(cmd *cobra.Command, args []string) error {
 
 	forceFlag, _ := cmd.Flags().GetBool("force")
 
-	if migrate := einterfaces.GetAccountMigrationInterface(); migrate != nil {
+	if migrate := a.AccountMigration; migrate != nil {
 		if err := migrate.MigrateToLdap(fromAuth, matchField, forceFlag); err != nil {
 			return errors.New("Error while migrating users: " + err.Error())
-		} else {
-			CommandPrettyPrintln("Sucessfully migrated accounts.")
 		}
+
+		CommandPrettyPrintln("Sucessfully migrated accounts.")
 	}
 
 	return nil
 }
 
 func verifyUserCmdF(cmd *cobra.Command, args []string) error {
-	if err := initDBCommandContextCobra(cmd); err != nil {
+	a, err := initDBCommandContextCobra(cmd)
+	if err != nil {
 		return err
 	}
 
 	if len(args) < 1 {
-		return errors.New("Enter at least one user.")
+		return errors.New("Expected at least one argument. See help text for details.")
 	}
 
-	users := getUsersFromUserArgs(args)
+	users := getUsersFromUserArgs(a, args)
 
 	for i, user := range users {
 		if user == nil {
 			CommandPrintErrorln("Unable to find user '" + args[i] + "'")
 			continue
 		}
-		if cresult := <-app.Srv.Store.User().VerifyEmail(user.Id); cresult.Err != nil {
+		if cresult := <-a.Srv.Store.User().VerifyEmail(user.Id); cresult.Err != nil {
 			CommandPrintErrorln("Unable to verify '" + args[i] + "' email. Error: " + cresult.Err.Error())
 		}
 	}
@@ -484,15 +485,16 @@ func verifyUserCmdF(cmd *cobra.Command, args []string) error {
 }
 
 func searchUserCmdF(cmd *cobra.Command, args []string) error {
-	if err := initDBCommandContextCobra(cmd); err != nil {
+	a, err := initDBCommandContextCobra(cmd)
+	if err != nil {
 		return err
 	}
 
 	if len(args) < 1 {
-		return errors.New("Enter at least one query.")
+		return errors.New("Expected at least one argument. See help text for details.")
 	}
 
-	users := getUsersFromUserArgs(args)
+	users := getUsersFromUserArgs(a, args)
 
 	for i, user := range users {
 		if i > 0 {

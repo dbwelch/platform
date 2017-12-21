@@ -6,40 +6,41 @@ package api
 import (
 	"net/http"
 	"strconv"
+	"time"
 
 	l4g "github.com/alecthomas/log4go"
 	"github.com/gorilla/mux"
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
 const OPEN_GRAPH_METADATA_CACHE_SIZE = 10000
 
 var openGraphDataCache = utils.NewLru(OPEN_GRAPH_METADATA_CACHE_SIZE)
 
-func InitPost() {
+func (api *API) InitPost() {
 	l4g.Debug(utils.T("api.post.init.debug"))
 
-	BaseRoutes.ApiRoot.Handle("/get_opengraph_metadata", ApiUserRequired(getOpenGraphMetadata)).Methods("POST")
+	api.BaseRoutes.ApiRoot.Handle("/get_opengraph_metadata", api.ApiUserRequired(getOpenGraphMetadata)).Methods("POST")
 
-	BaseRoutes.NeedTeam.Handle("/posts/search", ApiUserRequiredActivity(searchPosts, true)).Methods("POST")
-	BaseRoutes.NeedTeam.Handle("/posts/flagged/{offset:[0-9]+}/{limit:[0-9]+}", ApiUserRequired(getFlaggedPosts)).Methods("GET")
-	BaseRoutes.NeedTeam.Handle("/posts/{post_id}", ApiUserRequired(getPostById)).Methods("GET")
-	BaseRoutes.NeedTeam.Handle("/pltmp/{post_id}", ApiUserRequired(getPermalinkTmp)).Methods("GET")
+	api.BaseRoutes.NeedTeam.Handle("/posts/search", api.ApiUserRequiredActivity(searchPosts, true)).Methods("POST")
+	api.BaseRoutes.NeedTeam.Handle("/posts/flagged/{offset:[0-9]+}/{limit:[0-9]+}", api.ApiUserRequired(getFlaggedPosts)).Methods("GET")
+	api.BaseRoutes.NeedTeam.Handle("/posts/{post_id}", api.ApiUserRequired(getPostById)).Methods("GET")
+	api.BaseRoutes.NeedTeam.Handle("/pltmp/{post_id}", api.ApiUserRequired(getPermalinkTmp)).Methods("GET")
 
-	BaseRoutes.Posts.Handle("/create", ApiUserRequiredActivity(createPost, true)).Methods("POST")
-	BaseRoutes.Posts.Handle("/update", ApiUserRequiredActivity(updatePost, true)).Methods("POST")
-	BaseRoutes.Posts.Handle("/page/{offset:[0-9]+}/{limit:[0-9]+}", ApiUserRequired(getPosts)).Methods("GET")
-	BaseRoutes.Posts.Handle("/since/{time:[0-9]+}", ApiUserRequired(getPostsSince)).Methods("GET")
+	api.BaseRoutes.Posts.Handle("/create", api.ApiUserRequiredActivity(createPost, true)).Methods("POST")
+	api.BaseRoutes.Posts.Handle("/update", api.ApiUserRequiredActivity(updatePost, true)).Methods("POST")
+	api.BaseRoutes.Posts.Handle("/page/{offset:[0-9]+}/{limit:[0-9]+}", api.ApiUserRequired(getPosts)).Methods("GET")
+	api.BaseRoutes.Posts.Handle("/since/{time:[0-9]+}", api.ApiUserRequired(getPostsSince)).Methods("GET")
 
-	BaseRoutes.NeedPost.Handle("/get", ApiUserRequired(getPost)).Methods("GET")
-	BaseRoutes.NeedPost.Handle("/delete", ApiUserRequiredActivity(deletePost, true)).Methods("POST")
-	BaseRoutes.NeedPost.Handle("/before/{offset:[0-9]+}/{num_posts:[0-9]+}", ApiUserRequired(getPostsBefore)).Methods("GET")
-	BaseRoutes.NeedPost.Handle("/after/{offset:[0-9]+}/{num_posts:[0-9]+}", ApiUserRequired(getPostsAfter)).Methods("GET")
-	BaseRoutes.NeedPost.Handle("/get_file_infos", ApiUserRequired(getFileInfosForPost)).Methods("GET")
-	BaseRoutes.NeedPost.Handle("/pin", ApiUserRequired(pinPost)).Methods("POST")
-	BaseRoutes.NeedPost.Handle("/unpin", ApiUserRequired(unpinPost)).Methods("POST")
+	api.BaseRoutes.NeedPost.Handle("/get", api.ApiUserRequired(getPost)).Methods("GET")
+	api.BaseRoutes.NeedPost.Handle("/delete", api.ApiUserRequiredActivity(deletePost, true)).Methods("POST")
+	api.BaseRoutes.NeedPost.Handle("/before/{offset:[0-9]+}/{num_posts:[0-9]+}", api.ApiUserRequired(getPostsBefore)).Methods("GET")
+	api.BaseRoutes.NeedPost.Handle("/after/{offset:[0-9]+}/{num_posts:[0-9]+}", api.ApiUserRequired(getPostsAfter)).Methods("GET")
+	api.BaseRoutes.NeedPost.Handle("/get_file_infos", api.ApiUserRequired(getFileInfosForPost)).Methods("GET")
+	api.BaseRoutes.NeedPost.Handle("/pin", api.ApiUserRequired(pinPost)).Methods("POST")
+	api.BaseRoutes.NeedPost.Handle("/unpin", api.ApiUserRequired(unpinPost)).Methods("POST")
 }
 
 func createPost(c *Context, w http.ResponseWriter, r *http.Request) {
@@ -52,11 +53,11 @@ func createPost(c *Context, w http.ResponseWriter, r *http.Request) {
 	post.UserId = c.Session.UserId
 
 	hasPermission := false
-	if app.SessionHasPermissionToChannel(c.Session, post.ChannelId, model.PERMISSION_CREATE_POST) {
+	if c.App.SessionHasPermissionToChannel(c.Session, post.ChannelId, model.PERMISSION_CREATE_POST) {
 		hasPermission = true
-	} else if channel, err := app.GetChannel(post.ChannelId); err == nil {
+	} else if channel, err := c.App.GetChannel(post.ChannelId); err == nil {
 		// Temporary permission check method until advanced permissions, please do not copy
-		if channel.Type == model.CHANNEL_OPEN && app.SessionHasPermissionToTeam(c.Session, channel.TeamId, model.PERMISSION_CREATE_POST_PUBLIC) {
+		if channel.Type == model.CHANNEL_OPEN && c.App.SessionHasPermissionToTeam(c.Session, channel.TeamId, model.PERMISSION_CREATE_POST_PUBLIC) {
 			hasPermission = true
 		}
 	}
@@ -66,11 +67,11 @@ func createPost(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if post.CreateAt != 0 && !app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
+	if post.CreateAt != 0 && !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
 		post.CreateAt = 0
 	}
 
-	rp, err := app.CreatePostAsUser(post)
+	rp, err := c.App.CreatePostAsUser(post)
 	if err != nil {
 		c.Err = err
 		return
@@ -87,14 +88,14 @@ func updatePost(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !app.SessionHasPermissionToChannel(c.Session, post.ChannelId, model.PERMISSION_EDIT_POST) {
+	if !c.App.SessionHasPermissionToChannel(c.Session, post.ChannelId, model.PERMISSION_EDIT_POST) {
 		c.SetPermissionError(model.PERMISSION_EDIT_POST)
 		return
 	}
 
 	post.UserId = c.Session.UserId
 
-	rpost, err := app.UpdatePost(post, true)
+	rpost, err := c.App.UpdatePost(post, true)
 	if err != nil {
 		c.Err = err
 		return
@@ -118,7 +119,7 @@ func saveIsPinnedPost(c *Context, w http.ResponseWriter, r *http.Request, isPinn
 		return
 	}
 
-	pchan := app.Srv.Store.Post().Get(postId)
+	pchan := c.App.Srv.Store.Post().Get(postId)
 
 	var oldPost *model.Post
 	if result := <-pchan; result.Err != nil {
@@ -130,7 +131,7 @@ func saveIsPinnedPost(c *Context, w http.ResponseWriter, r *http.Request, isPinn
 		*newPost = *oldPost
 		newPost.IsPinned = isPinned
 
-		if result := <-app.Srv.Store.Post().Update(newPost, oldPost); result.Err != nil {
+		if result := <-c.App.Srv.Store.Post().Update(newPost, oldPost); result.Err != nil {
 			c.Err = result.Err
 			return
 		} else {
@@ -139,9 +140,11 @@ func saveIsPinnedPost(c *Context, w http.ResponseWriter, r *http.Request, isPinn
 			message := model.NewWebSocketEvent(model.WEBSOCKET_EVENT_POST_EDITED, "", rpost.ChannelId, "", nil)
 			message.Add("post", rpost.ToJson())
 
-			go app.Publish(message)
+			c.App.Go(func() {
+				c.App.Publish(message)
+			})
 
-			app.InvalidateCacheForChannelPosts(rpost.ChannelId)
+			c.App.InvalidateCacheForChannelPosts(rpost.ChannelId)
 
 			w.Write([]byte(rpost.ToJson()))
 		}
@@ -171,12 +174,12 @@ func getFlaggedPosts(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !app.SessionHasPermissionToTeam(c.Session, c.TeamId, model.PERMISSION_VIEW_TEAM) {
+	if !c.App.SessionHasPermissionToTeam(c.Session, c.TeamId, model.PERMISSION_VIEW_TEAM) {
 		c.SetPermissionError(model.PERMISSION_VIEW_TEAM)
 		return
 	}
 
-	if posts, err := app.GetFlaggedPostsForTeam(c.Session.UserId, c.TeamId, offset, limit); err != nil {
+	if posts, err := c.App.GetFlaggedPostsForTeam(c.Session.UserId, c.TeamId, offset, limit); err != nil {
 		c.Err = err
 		return
 	} else {
@@ -205,18 +208,18 @@ func getPosts(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !app.SessionHasPermissionToChannel(c.Session, id, model.PERMISSION_CREATE_POST) {
+	if !c.App.SessionHasPermissionToChannel(c.Session, id, model.PERMISSION_CREATE_POST) {
 		c.SetPermissionError(model.PERMISSION_CREATE_POST)
 		return
 	}
 
-	etag := app.GetPostsEtag(id)
+	etag := c.App.GetPostsEtag(id)
 
-	if HandleEtag(etag, "Get Posts", w, r) {
+	if c.HandleEtag(etag, "Get Posts", w, r) {
 		return
 	}
 
-	if list, err := app.GetPosts(id, offset, limit); err != nil {
+	if list, err := c.App.GetPosts(id, offset, limit); err != nil {
 		c.Err = err
 		return
 	} else {
@@ -241,12 +244,12 @@ func getPostsSince(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !app.SessionHasPermissionToChannel(c.Session, id, model.PERMISSION_READ_CHANNEL) {
+	if !c.App.SessionHasPermissionToChannel(c.Session, id, model.PERMISSION_READ_CHANNEL) {
 		c.SetPermissionError(model.PERMISSION_READ_CHANNEL)
 		return
 	}
 
-	if list, err := app.GetPostsSince(id, time); err != nil {
+	if list, err := c.App.GetPostsSince(id, time); err != nil {
 		c.Err = err
 		return
 	} else {
@@ -270,20 +273,19 @@ func getPost(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !app.SessionHasPermissionToChannel(c.Session, channelId, model.PERMISSION_READ_CHANNEL) {
+	if !c.App.SessionHasPermissionToChannel(c.Session, channelId, model.PERMISSION_READ_CHANNEL) {
 		c.SetPermissionError(model.PERMISSION_READ_CHANNEL)
 		return
 	}
 
-	if list, err := app.GetPostThread(postId); err != nil {
+	if list, err := c.App.GetPostThread(postId); err != nil {
 		c.Err = err
 		return
-	} else if HandleEtag(list.Etag(), "Get Post", w, r) {
+	} else if c.HandleEtag(list.Etag(), "Get Post", w, r) {
 		return
 	} else {
 		if !list.IsChannelId(channelId) {
-			c.Err = model.NewLocAppError("getPost", "api.post.get_post.permissions.app_error", nil, "")
-			c.Err.StatusCode = http.StatusForbidden
+			c.Err = model.NewAppError("getPost", "api.post.get_post.permissions.app_error", nil, "", http.StatusForbidden)
 			return
 		}
 
@@ -301,22 +303,22 @@ func getPostById(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if list, err := app.GetPostThread(postId); err != nil {
+	if list, err := c.App.GetPostThread(postId); err != nil {
 		c.Err = err
 		return
 	} else {
 		if len(list.Order) != 1 {
-			c.Err = model.NewLocAppError("getPostById", "api.post_get_post_by_id.get.app_error", nil, "")
+			c.Err = model.NewAppError("getPostById", "api.post_get_post_by_id.get.app_error", nil, "", http.StatusInternalServerError)
 			return
 		}
 		post := list.Posts[list.Order[0]]
 
-		if !app.SessionHasPermissionToChannel(c.Session, post.ChannelId, model.PERMISSION_READ_CHANNEL) {
+		if !c.App.SessionHasPermissionToChannel(c.Session, post.ChannelId, model.PERMISSION_READ_CHANNEL) {
 			c.SetPermissionError(model.PERMISSION_READ_CHANNEL)
 			return
 		}
 
-		if HandleEtag(list.Etag(), "Get Post By Id", w, r) {
+		if c.HandleEtag(list.Etag(), "Get Post By Id", w, r) {
 			return
 		}
 
@@ -335,7 +337,7 @@ func getPermalinkTmp(c *Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	var channel *model.Channel
-	if result := <-app.Srv.Store.Channel().GetForPost(postId); result.Err == nil {
+	if result := <-c.App.Srv.Store.Channel().GetForPost(postId); result.Err == nil {
 		channel = result.Data.(*model.Channel)
 	} else {
 		c.SetInvalidParam("getPermalinkTmp", "postId")
@@ -343,21 +345,21 @@ func getPermalinkTmp(c *Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	if channel.Type == model.CHANNEL_OPEN {
-		if !app.HasPermissionToChannelByPost(c.Session.UserId, postId, model.PERMISSION_JOIN_PUBLIC_CHANNELS) {
+		if !c.App.HasPermissionToChannelByPost(c.Session.UserId, postId, model.PERMISSION_JOIN_PUBLIC_CHANNELS) {
 			c.SetPermissionError(model.PERMISSION_JOIN_PUBLIC_CHANNELS)
 			return
 		}
 	} else {
-		if !app.HasPermissionToChannelByPost(c.Session.UserId, postId, model.PERMISSION_READ_CHANNEL) {
+		if !c.App.HasPermissionToChannelByPost(c.Session.UserId, postId, model.PERMISSION_READ_CHANNEL) {
 			c.SetPermissionError(model.PERMISSION_READ_CHANNEL)
 			return
 		}
 	}
 
-	if list, err := app.GetPermalinkPost(postId, c.Session.UserId); err != nil {
+	if list, err := c.App.GetPermalinkPost(postId, c.Session.UserId); err != nil {
 		c.Err = err
 		return
-	} else if HandleEtag(list.Etag(), "Get Permalink TMP", w, r) {
+	} else if c.HandleEtag(list.Etag(), "Get Permalink TMP", w, r) {
 		return
 	} else {
 		w.Header().Set(model.HEADER_ETAG_SERVER, list.Etag())
@@ -380,23 +382,22 @@ func deletePost(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !app.SessionHasPermissionToChannel(c.Session, channelId, model.PERMISSION_DELETE_POST) {
+	if !c.App.SessionHasPermissionToChannel(c.Session, channelId, model.PERMISSION_DELETE_POST) {
 		c.SetPermissionError(model.PERMISSION_DELETE_POST)
 		return
 	}
 
-	if !app.SessionHasPermissionToPost(c.Session, postId, model.PERMISSION_DELETE_OTHERS_POSTS) {
+	if !c.App.SessionHasPermissionToPost(c.Session, postId, model.PERMISSION_DELETE_OTHERS_POSTS) {
 		c.SetPermissionError(model.PERMISSION_DELETE_OTHERS_POSTS)
 		return
 	}
 
-	if post, err := app.DeletePost(postId); err != nil {
+	if post, err := c.App.DeletePost(postId); err != nil {
 		c.Err = err
 		return
 	} else {
 		if post.ChannelId != channelId {
-			c.Err = model.NewLocAppError("deletePost", "api.post.delete_post.permissions.app_error", nil, "")
-			c.Err.StatusCode = http.StatusForbidden
+			c.Err = model.NewAppError("deletePost", "api.post.delete_post.permissions.app_error", nil, "", http.StatusForbidden)
 			return
 		}
 
@@ -441,19 +442,19 @@ func getPostsBeforeOrAfter(c *Context, w http.ResponseWriter, r *http.Request, b
 		return
 	}
 
-	if !app.SessionHasPermissionToChannel(c.Session, id, model.PERMISSION_READ_CHANNEL) {
+	if !c.App.SessionHasPermissionToChannel(c.Session, id, model.PERMISSION_READ_CHANNEL) {
 		c.SetPermissionError(model.PERMISSION_READ_CHANNEL)
 		return
 	}
 
 	// We can do better than this etag in this situation
-	etag := app.GetPostsEtag(id)
+	etag := c.App.GetPostsEtag(id)
 
-	if HandleEtag(etag, "Get Posts Before or After", w, r) {
+	if c.HandleEtag(etag, "Get Posts Before or After", w, r) {
 		return
 	}
 
-	if list, err := app.GetPostsAroundPost(postId, id, offset, numPosts, before); err != nil {
+	if list, err := c.App.GetPostsAroundPost(postId, id, offset, numPosts, before); err != nil {
 		c.Err = err
 		return
 	} else {
@@ -476,7 +477,17 @@ func searchPosts(c *Context, w http.ResponseWriter, r *http.Request) {
 		isOrSearch = val.(bool)
 	}
 
-	posts, err := app.SearchPostsInTeam(terms, c.Session.UserId, c.TeamId, isOrSearch)
+	startTime := time.Now()
+
+	posts, err := c.App.SearchPostsInTeam(terms, c.Session.UserId, c.TeamId, isOrSearch)
+
+	elapsedTime := float64(time.Since(startTime)) / float64(time.Second)
+	metrics := c.App.Metrics
+	if metrics != nil {
+		metrics.IncrementPostsSearchCounter()
+		metrics.ObservePostsSearchDuration(elapsedTime)
+	}
+
 	if err != nil {
 		c.Err = err
 		return
@@ -501,15 +512,15 @@ func getFileInfosForPost(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !app.SessionHasPermissionToChannel(c.Session, channelId, model.PERMISSION_READ_CHANNEL) {
+	if !c.App.SessionHasPermissionToChannel(c.Session, channelId, model.PERMISSION_READ_CHANNEL) {
 		c.SetPermissionError(model.PERMISSION_READ_CHANNEL)
 		return
 	}
 
-	if infos, err := app.GetFileInfosForPost(postId, false); err != nil {
+	if infos, err := c.App.GetFileInfosForPost(postId, false); err != nil {
 		c.Err = err
 		return
-	} else if HandleEtag(model.GetEtagForFileInfos(infos), "Get File Infos For Post", w, r) {
+	} else if c.HandleEtag(model.GetEtagForFileInfos(infos), "Get File Infos For Post", w, r) {
 		return
 	} else {
 		if len(infos) > 0 {
@@ -522,7 +533,7 @@ func getFileInfosForPost(c *Context, w http.ResponseWriter, r *http.Request) {
 }
 
 func getOpenGraphMetadata(c *Context, w http.ResponseWriter, r *http.Request) {
-	if !*utils.Cfg.ServiceSettings.EnableLinkPreviews {
+	if !*c.App.Config().ServiceSettings.EnableLinkPreviews {
 		c.Err = model.NewAppError("getOpenGraphMetadata", "api.post.link_preview_disabled.app_error", nil, "", http.StatusNotImplemented)
 		return
 	}
@@ -542,7 +553,7 @@ func getOpenGraphMetadata(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	og := app.GetOpenGraphMetadata(url)
+	og := c.App.GetOpenGraphMetadata(url)
 
 	ogJSON, err := og.ToJSON()
 	openGraphDataCache.AddWithExpiresInSecs(props["url"], ogJSON, 3600) // Cache would expire after 1 hour

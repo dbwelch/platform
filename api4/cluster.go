@@ -7,23 +7,22 @@ import (
 	"net/http"
 
 	l4g "github.com/alecthomas/log4go"
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
-func InitCluster() {
+func (api *API) InitCluster() {
 	l4g.Debug(utils.T("api.cluster.init.debug"))
 
-	BaseRoutes.Cluster.Handle("/status", ApiSessionRequired(getClusterStatus)).Methods("GET")
+	api.BaseRoutes.Cluster.Handle("/status", api.ApiSessionRequired(getClusterStatus)).Methods("GET")
 }
 
 func getClusterStatus(c *Context, w http.ResponseWriter, r *http.Request) {
-	if !app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
+	if !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_SYSTEM)
 		return
 	}
 
-	infos := app.GetClusterStatus()
+	infos := c.App.GetClusterStatus()
 	w.Write([]byte(model.ClusterInfosToJson(infos)))
 }

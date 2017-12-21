@@ -4,8 +4,8 @@
 package app
 
 import (
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
 type AutoChannelCreator struct {
@@ -65,7 +65,7 @@ func (cfg *AutoChannelCreator) CreateTestChannels(num utils.Range) ([]*model.Cha
 	for i := 0; i < numChannels; i++ {
 		var err bool
 		channels[i], err = cfg.createRandomChannel()
-		if err != true {
+		if !err {
 			return channels, false
 		}
 	}

@@ -5,11 +5,11 @@ package app
 
 import (
 	"fmt"
+	"sync/atomic"
 	"time"
 
-	"github.com/mattermost/platform/einterfaces"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 
 	l4g "github.com/alecthomas/log4go"
 	"github.com/gorilla/websocket"
@@ -28,41 +28,97 @@ const (
 )
 
 type WebConn struct {
+	sessionExpiresAt          int64 // This should stay at the top for 64-bit alignment of 64-bit words accessed atomically
+	App                       *App
 	WebSocket                 *websocket.Conn
 	Send                      chan model.WebSocketMessage
-	SessionToken              string
-	SessionExpiresAt          int64
-	Session                   *model.Session
+	sessionToken              atomic.Value
+	session                   atomic.Value
 	UserId                    string
 	T                         goi18n.TranslateFunc
 	Locale                    string
 	AllChannelMembers         map[string]string
 	LastAllChannelMembersTime int64
 	Sequence                  int64
+	endWritePump              chan struct{}
+	pumpFinished              chan struct{}
 }
 
-func NewWebConn(ws *websocket.Conn, session model.Session, t goi18n.TranslateFunc, locale string) *WebConn {
+func (a *App) NewWebConn(ws *websocket.Conn, session model.Session, t goi18n.TranslateFunc, locale string) *WebConn {
 	if len(session.UserId) > 0 {
-		go func() {
-			SetStatusOnline(session.UserId, session.Id, false)
-			UpdateLastActivityAtIfNeeded(session)
-		}()
+		a.Go(func() {
+			a.SetStatusOnline(session.UserId, session.Id, false)
+			a.UpdateLastActivityAtIfNeeded(session)
+		})
 	}
 
-	return &WebConn{
-		Send:             make(chan model.WebSocketMessage, SEND_QUEUE_SIZE),
-		WebSocket:        ws,
-		UserId:           session.UserId,
-		SessionToken:     session.Token,
-		SessionExpiresAt: session.ExpiresAt,
-		T:                t,
-		Locale:           locale,
+	wc := &WebConn{
+		App:          a,
+		Send:         make(chan model.WebSocketMessage, SEND_QUEUE_SIZE),
+		WebSocket:    ws,
+		UserId:       session.UserId,
+		T:            t,
+		Locale:       locale,
+		endWritePump: make(chan struct{}, 2),
+		pumpFinished: make(chan struct{}, 1),
 	}
+
+	wc.SetSession(&session)
+	wc.SetSessionToken(session.Token)
+	wc.SetSessionExpiresAt(session.ExpiresAt)
+
+	return wc
 }
 
-func (c *WebConn) ReadPump() {
+func (wc *WebConn) Close() {
+	wc.WebSocket.Close()
+	wc.endWritePump <- struct{}{}
+	<-wc.pumpFinished
+}
+
+func (c *WebConn) GetSessionExpiresAt() int64 {
+	return atomic.LoadInt64(&c.sessionExpiresAt)
+}
+
+func (c *WebConn) SetSessionExpiresAt(v int64) {
+	atomic.StoreInt64(&c.sessionExpiresAt, v)
+}
+
+func (c *WebConn) GetSessionToken() string {
+	return c.sessionToken.Load().(string)
+}
+
+func (c *WebConn) SetSessionToken(v string) {
+	c.sessionToken.Store(v)
+}
+
+func (c *WebConn) GetSession() *model.Session {
+	return c.session.Load().(*model.Session)
+}
+
+func (c *WebConn) SetSession(v *model.Session) {
+	if v != nil {
+		v = v.DeepCopy()
+	}
+
+	c.session.Store(v)
+}
+
+func (c *WebConn) Pump() {
+	ch := make(chan struct{}, 1)
+	go func() {
+		c.writePump()
+		ch <- struct{}{}
+	}()
+	c.readPump()
+	c.endWritePump <- struct{}{}
+	<-ch
+	c.App.HubUnregister(c)
+	c.pumpFinished <- struct{}{}
+}
+
+func (c *WebConn) readPump() {
 	defer func() {
-		HubUnregister(c)
 		c.WebSocket.Close()
 	}()
 	c.WebSocket.SetReadLimit(model.SOCKET_MAX_MESSAGE_SIZE_KB)
@@ -70,7 +126,9 @@ func (c *WebConn) ReadPump() {
 	c.WebSocket.SetPongHandler(func(string) error {
 		c.WebSocket.SetReadDeadline(time.Now().Add(PONG_WAIT))
 		if c.IsAuthenticated() {
-			go SetStatusAwayIfNeeded(c.UserId, false)
+			c.App.Go(func() {
+				c.App.SetStatusAwayIfNeeded(c.UserId, false)
+			})
 		}
 		return nil
 	})
@@ -87,12 +145,12 @@ func (c *WebConn) ReadPump() {
 
 			return
 		} else {
-			Srv.WebSocketRouter.ServeWebSocket(c, &req)
+			c.App.Srv.WebSocketRouter.ServeWebSocket(c, &req)
 		}
 	}
 }
 
-func (c *WebConn) WritePump() {
+func (c *WebConn) writePump() {
 	ticker := time.NewTicker(PING_PERIOD)
 	authTicker := time.NewTicker(AUTH_TIMEOUT)
 
@@ -156,8 +214,10 @@ func (c *WebConn) WritePump() {
 					return
 				}
 
-				if einterfaces.GetMetricsInterface() != nil {
-					go einterfaces.GetMetricsInterface().IncrementWebSocketBroadcast(msg.EventType())
+				if c.App.Metrics != nil {
+					c.App.Go(func() {
+						c.App.Metrics.IncrementWebSocketBroadcast(msg.EventType())
+					})
 				}
 
 			}
@@ -173,9 +233,10 @@ func (c *WebConn) WritePump() {
 
 				return
 			}
-
+		case <-c.endWritePump:
+			return
 		case <-authTicker.C:
-			if c.SessionToken == "" {
+			if c.GetSessionToken() == "" {
 				l4g.Debug(fmt.Sprintf("websocket.authTicker: did not authenticate ip=%v", c.WebSocket.RemoteAddr()))
 				return
 			}
@@ -187,29 +248,28 @@ func (c *WebConn) WritePump() {
 func (webCon *WebConn) InvalidateCache() {
 	webCon.AllChannelMembers = nil
 	webCon.LastAllChannelMembersTime = 0
-	webCon.SessionExpiresAt = 0
-	webCon.Session = nil
+	webCon.SetSession(nil)
+	webCon.SetSessionExpiresAt(0)
 }
 
 func (webCon *WebConn) IsAuthenticated() bool {
 	// Check the expiry to see if we need to check for a new session
-	if webCon.SessionExpiresAt < model.GetMillis() {
-		if webCon.SessionToken == "" {
+	if webCon.GetSessionExpiresAt() < model.GetMillis() {
+		if webCon.GetSessionToken() == "" {
 			return false
 		}
 
-		session, err := GetSession(webCon.SessionToken)
+		session, err := webCon.App.GetSession(webCon.GetSessionToken())
 		if err != nil {
 			l4g.Error(utils.T("api.websocket.invalid_session.error"), err.Error())
-			webCon.SessionToken = ""
-			webCon.SessionExpiresAt = 0
-			webCon.Session = nil
+			webCon.SetSessionToken("")
+			webCon.SetSession(nil)
+			webCon.SetSessionExpiresAt(0)
 			return false
 		}
 
-		webCon.SessionToken = session.Token
-		webCon.SessionExpiresAt = session.ExpiresAt
-		webCon.Session = session
+		webCon.SetSession(session)
+		webCon.SetSessionExpiresAt(session.ExpiresAt)
 	}
 
 	return true
@@ -217,7 +277,7 @@ func (webCon *WebConn) IsAuthenticated() bool {
 
 func (webCon *WebConn) SendHello() {
 	msg := model.NewWebSocketEvent(model.WEBSOCKET_EVENT_HELLO, "", "", webCon.UserId, nil)
-	msg.Add("server_version", fmt.Sprintf("%v.%v.%v.%v", model.CurrentVersion, model.BuildNumber, utils.ClientCfgHash, utils.IsLicensed))
+	msg.Add("server_version", fmt.Sprintf("%v.%v.%v.%v", model.CurrentVersion, model.BuildNumber, utils.ClientCfgHash, utils.IsLicensed()))
 	webCon.Send <- msg
 }
 
@@ -251,7 +311,7 @@ func (webCon *WebConn) ShouldSendEvent(msg *model.WebSocketEvent) bool {
 		}
 
 		if webCon.AllChannelMembers == nil {
-			if result := <-Srv.Store.Channel().GetAllChannelMembersForUser(webCon.UserId, true); result.Err != nil {
+			if result := <-webCon.App.Srv.Store.Channel().GetAllChannelMembersForUser(webCon.UserId, true); result.Err != nil {
 				l4g.Error("webhub.shouldSendEvent: " + result.Err.Error())
 				return false
 			} else {
@@ -278,18 +338,20 @@ func (webCon *WebConn) ShouldSendEvent(msg *model.WebSocketEvent) bool {
 
 func (webCon *WebConn) IsMemberOfTeam(teamId string) bool {
 
-	if webCon.Session == nil {
-		session, err := GetSession(webCon.SessionToken)
+	currentSession := webCon.GetSession()
+
+	if currentSession == nil || len(currentSession.Token) == 0 {
+		session, err := webCon.App.GetSession(webCon.GetSessionToken())
 		if err != nil {
 			l4g.Error(utils.T("api.websocket.invalid_session.error"), err.Error())
 			return false
 		} else {
-			webCon.Session = session
+			webCon.SetSession(session)
+			currentSession = session
 		}
-
 	}
 
-	member := webCon.Session.GetTeamByTeamId(teamId)
+	member := currentSession.GetTeamByTeamId(teamId)
 
 	if member != nil {
 		return true

@@ -11,46 +11,56 @@ import (
 	"strconv"
 
 	l4g "github.com/alecthomas/log4go"
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
-func InitSystem() {
+func (api *API) InitSystem() {
 	l4g.Debug(utils.T("api.system.init.debug"))
 
-	BaseRoutes.System.Handle("/ping", ApiHandler(getSystemPing)).Methods("GET")
+	api.BaseRoutes.System.Handle("/ping", api.ApiHandler(getSystemPing)).Methods("GET")
 
-	BaseRoutes.ApiRoot.Handle("/config", ApiSessionRequired(getConfig)).Methods("GET")
-	BaseRoutes.ApiRoot.Handle("/config", ApiSessionRequired(updateConfig)).Methods("PUT")
-	BaseRoutes.ApiRoot.Handle("/config/reload", ApiSessionRequired(configReload)).Methods("POST")
-	BaseRoutes.ApiRoot.Handle("/config/client", ApiHandler(getClientConfig)).Methods("GET")
+	api.BaseRoutes.ApiRoot.Handle("/config", api.ApiSessionRequired(getConfig)).Methods("GET")
+	api.BaseRoutes.ApiRoot.Handle("/config", api.ApiSessionRequired(updateConfig)).Methods("PUT")
+	api.BaseRoutes.ApiRoot.Handle("/config/reload", api.ApiSessionRequired(configReload)).Methods("POST")
+	api.BaseRoutes.ApiRoot.Handle("/config/client", api.ApiHandler(getClientConfig)).Methods("GET")
 
-	BaseRoutes.ApiRoot.Handle("/license", ApiSessionRequired(addLicense)).Methods("POST")
-	BaseRoutes.ApiRoot.Handle("/license", ApiSessionRequired(removeLicense)).Methods("DELETE")
-	BaseRoutes.ApiRoot.Handle("/license/client", ApiHandler(getClientLicense)).Methods("GET")
+	api.BaseRoutes.ApiRoot.Handle("/license", api.ApiSessionRequired(addLicense)).Methods("POST")
+	api.BaseRoutes.ApiRoot.Handle("/license", api.ApiSessionRequired(removeLicense)).Methods("DELETE")
+	api.BaseRoutes.ApiRoot.Handle("/license/client", api.ApiHandler(getClientLicense)).Methods("GET")
 
-	BaseRoutes.ApiRoot.Handle("/audits", ApiSessionRequired(getAudits)).Methods("GET")
-	BaseRoutes.ApiRoot.Handle("/email/test", ApiSessionRequired(testEmail)).Methods("POST")
-	BaseRoutes.ApiRoot.Handle("/database/recycle", ApiSessionRequired(databaseRecycle)).Methods("POST")
-	BaseRoutes.ApiRoot.Handle("/caches/invalidate", ApiSessionRequired(invalidateCaches)).Methods("POST")
+	api.BaseRoutes.ApiRoot.Handle("/audits", api.ApiSessionRequired(getAudits)).Methods("GET")
+	api.BaseRoutes.ApiRoot.Handle("/email/test", api.ApiSessionRequired(testEmail)).Methods("POST")
+	api.BaseRoutes.ApiRoot.Handle("/database/recycle", api.ApiSessionRequired(databaseRecycle)).Methods("POST")
+	api.BaseRoutes.ApiRoot.Handle("/caches/invalidate", api.ApiSessionRequired(invalidateCaches)).Methods("POST")
 
-	BaseRoutes.ApiRoot.Handle("/logs", ApiSessionRequired(getLogs)).Methods("GET")
-	BaseRoutes.ApiRoot.Handle("/logs", ApiSessionRequired(postLog)).Methods("POST")
+	api.BaseRoutes.ApiRoot.Handle("/logs", api.ApiSessionRequired(getLogs)).Methods("GET")
+	api.BaseRoutes.ApiRoot.Handle("/logs", api.ApiHandler(postLog)).Methods("POST")
 
-	BaseRoutes.ApiRoot.Handle("/analytics/old", ApiSessionRequired(getAnalytics)).Methods("GET")
+	api.BaseRoutes.ApiRoot.Handle("/analytics/old", api.ApiSessionRequired(getAnalytics)).Methods("GET")
 }
 
 func getSystemPing(c *Context, w http.ResponseWriter, r *http.Request) {
 
 	actualGoroutines := runtime.NumGoroutine()
-	if *utils.Cfg.ServiceSettings.GoroutineHealthThreshold <= 0 || actualGoroutines <= *utils.Cfg.ServiceSettings.GoroutineHealthThreshold {
-		ReturnStatusOK(w)
+	if *c.App.Config().ServiceSettings.GoroutineHealthThreshold <= 0 || actualGoroutines <= *c.App.Config().ServiceSettings.GoroutineHealthThreshold {
+		m := make(map[string]string)
+		m[model.STATUS] = model.STATUS_OK
+
+		reqs := c.App.Config().ClientRequirements
+		m["AndroidLatestVersion"] = reqs.AndroidLatestVersion
+		m["AndroidMinVersion"] = reqs.AndroidMinVersion
+		m["DesktopLatestVersion"] = reqs.DesktopLatestVersion
+		m["DesktopMinVersion"] = reqs.DesktopMinVersion
+		m["IosLatestVersion"] = reqs.IosLatestVersion
+		m["IosMinVersion"] = reqs.IosMinVersion
+
+		w.Write([]byte(model.MapToJson(m)))
 	} else {
 		rdata := map[string]string{}
 		rdata["status"] = "unhealthy"
 
-		l4g.Warn(utils.T("api.system.go_routines"), actualGoroutines, *utils.Cfg.ServiceSettings.GoroutineHealthThreshold)
+		l4g.Warn(utils.T("api.system.go_routines"), actualGoroutines, *c.App.Config().ServiceSettings.GoroutineHealthThreshold)
 
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(model.MapToJson(rdata)))
@@ -60,15 +70,15 @@ func getSystemPing(c *Context, w http.ResponseWriter, r *http.Request) {
 func testEmail(c *Context, w http.ResponseWriter, r *http.Request) {
 	cfg := model.ConfigFromJson(r.Body)
 	if cfg == nil {
-		cfg = utils.Cfg
+		cfg = c.App.Config()
 	}
 
-	if !app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
+	if !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_SYSTEM)
 		return
 	}
 
-	err := app.TestEmail(c.Session.UserId, cfg)
+	err := c.App.TestEmail(c.Session.UserId, cfg)
 	if err != nil {
 		c.Err = err
 		return
@@ -78,24 +88,24 @@ func testEmail(c *Context, w http.ResponseWriter, r *http.Request) {
 }
 
 func getConfig(c *Context, w http.ResponseWriter, r *http.Request) {
-	if !app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
+	if !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_SYSTEM)
 		return
 	}
 
-	cfg := app.GetConfig()
+	cfg := c.App.GetConfig()
 
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	w.Write([]byte(cfg.ToJson()))
 }
 
 func configReload(c *Context, w http.ResponseWriter, r *http.Request) {
-	if !app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
+	if !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_SYSTEM)
 		return
 	}
 
-	app.ReloadConfig()
+	c.App.ReloadConfig()
 
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	ReturnStatusOK(w)
@@ -108,12 +118,12 @@ func updateConfig(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
+	if !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_SYSTEM)
 		return
 	}
 
-	err := app.SaveConfig(cfg, true)
+	err := c.App.SaveConfig(cfg, true)
 	if err != nil {
 		c.Err = err
 		return
@@ -121,19 +131,19 @@ func updateConfig(c *Context, w http.ResponseWriter, r *http.Request) {
 
 	c.LogAudit("updateConfig")
 
-	cfg = app.GetConfig()
+	cfg = c.App.GetConfig()
 
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	w.Write([]byte(cfg.ToJson()))
 }
 
 func getAudits(c *Context, w http.ResponseWriter, r *http.Request) {
-	if !app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
+	if !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_SYSTEM)
 		return
 	}
 
-	audits, err := app.GetAuditsPage("", c.Params.Page, c.Params.PerPage)
+	audits, err := c.App.GetAuditsPage("", c.Params.Page, c.Params.PerPage)
 
 	if err != nil {
 		c.Err = err
@@ -145,23 +155,23 @@ func getAudits(c *Context, w http.ResponseWriter, r *http.Request) {
 
 func databaseRecycle(c *Context, w http.ResponseWriter, r *http.Request) {
 
-	if !app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
+	if !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_SYSTEM)
 		return
 	}
 
-	app.RecycleDatabaseConnection()
+	c.App.RecycleDatabaseConnection()
 
 	ReturnStatusOK(w)
 }
 
 func invalidateCaches(c *Context, w http.ResponseWriter, r *http.Request) {
-	if !app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
+	if !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_SYSTEM)
 		return
 	}
 
-	err := app.InvalidateAllCaches()
+	err := c.App.InvalidateAllCaches()
 	if err != nil {
 		c.Err = err
 		return
@@ -172,12 +182,12 @@ func invalidateCaches(c *Context, w http.ResponseWriter, r *http.Request) {
 }
 
 func getLogs(c *Context, w http.ResponseWriter, r *http.Request) {
-	if !app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
+	if !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_SYSTEM)
 		return
 	}
 
-	lines, err := app.GetLogs(c.Params.Page, c.Params.PerPage)
+	lines, err := c.App.GetLogs(c.Params.Page, c.Params.LogsPerPage)
 	if err != nil {
 		c.Err = err
 		return
@@ -187,9 +197,17 @@ func getLogs(c *Context, w http.ResponseWriter, r *http.Request) {
 }
 
 func postLog(c *Context, w http.ResponseWriter, r *http.Request) {
-	if !*utils.Cfg.ServiceSettings.EnableDeveloper && !app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
-		c.SetPermissionError(model.PERMISSION_MANAGE_SYSTEM)
-		return
+	forceToDebug := false
+
+	if !*c.App.Config().ServiceSettings.EnableDeveloper {
+		if c.Session.UserId == "" {
+			c.Err = model.NewAppError("postLog", "api.context.permissions.app_error", nil, "", http.StatusForbidden)
+			return
+		}
+
+		if !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
+			forceToDebug = true
+		}
 	}
 
 	m := model.MapFromJson(r.Body)
@@ -200,7 +218,7 @@ func postLog(c *Context, w http.ResponseWriter, r *http.Request) {
 		msg = msg[0:399]
 	}
 
-	if lvl == "ERROR" {
+	if !forceToDebug && lvl == "ERROR" {
 		err := &model.AppError{}
 		err.Message = msg
 		err.Id = msg
@@ -232,7 +250,7 @@ func getClientConfig(c *Context, w http.ResponseWriter, r *http.Request) {
 		respCfg[k] = v
 	}
 
-	respCfg["NoAccounts"] = strconv.FormatBool(app.IsFirstUserAccount())
+	respCfg["NoAccounts"] = strconv.FormatBool(c.App.IsFirstUserAccount())
 
 	w.Write([]byte(model.MapToJson(respCfg)))
 }
@@ -251,14 +269,14 @@ func getClientLicense(c *Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	etag := utils.GetClientLicenseEtag(true)
-	if HandleEtag(etag, "Get Client License", w, r) {
+	if c.HandleEtag(etag, "Get Client License", w, r) {
 		return
 	}
 
 	var clientLicense map[string]string
 
-	if app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
-		clientLicense = utils.ClientLicense
+	if c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
+		clientLicense = utils.ClientLicense()
 	} else {
 		clientLicense = utils.GetSanitizedClientLicense()
 	}
@@ -270,12 +288,12 @@ func getClientLicense(c *Context, w http.ResponseWriter, r *http.Request) {
 func addLicense(c *Context, w http.ResponseWriter, r *http.Request) {
 	c.LogAudit("attempt")
 
-	if !app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
+	if !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_SYSTEM)
 		return
 	}
 
-	err := r.ParseMultipartForm(*utils.Cfg.FileSettings.MaxFileSize)
+	err := r.ParseMultipartForm(*c.App.Config().FileSettings.MaxFileSize)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -297,16 +315,16 @@ func addLicense(c *Context, w http.ResponseWriter, r *http.Request) {
 	fileData := fileArray[0]
 
 	file, err := fileData.Open()
-	defer file.Close()
 	if err != nil {
 		c.Err = model.NewAppError("addLicense", "api.license.add_license.open.app_error", nil, err.Error(), http.StatusBadRequest)
 		return
 	}
+	defer file.Close()
 
 	buf := bytes.NewBuffer(nil)
 	io.Copy(buf, file)
 
-	if license, err := app.SaveLicense(buf.Bytes()); err != nil {
+	if license, err := c.App.SaveLicense(buf.Bytes()); err != nil {
 		if err.Id == model.EXPIRED_LICENSE_ERROR {
 			c.LogAudit("failed - expired or non-started license")
 		} else if err.Id == model.INVALID_LICENSE_ERROR {
@@ -325,12 +343,12 @@ func addLicense(c *Context, w http.ResponseWriter, r *http.Request) {
 func removeLicense(c *Context, w http.ResponseWriter, r *http.Request) {
 	c.LogAudit("attempt")
 
-	if !app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
+	if !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_SYSTEM)
 		return
 	}
 
-	if err := app.RemoveLicense(); err != nil {
+	if err := c.App.RemoveLicense(); err != nil {
 		c.Err = err
 		return
 	}
@@ -347,12 +365,12 @@ func getAnalytics(c *Context, w http.ResponseWriter, r *http.Request) {
 		name = "standard"
 	}
 
-	if !app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
+	if !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_SYSTEM)
 		return
 	}
 
-	rows, err := app.GetAnalytics(name, teamId)
+	rows, err := c.App.GetAnalytics(name, teamId)
 	if err != nil {
 		c.Err = err
 		return

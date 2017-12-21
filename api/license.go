@@ -9,22 +9,21 @@ import (
 	"net/http"
 
 	l4g "github.com/alecthomas/log4go"
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
-func InitLicense() {
+func (api *API) InitLicense() {
 	l4g.Debug(utils.T("api.license.init.debug"))
 
-	BaseRoutes.License.Handle("/add", ApiAdminSystemRequired(addLicense)).Methods("POST")
-	BaseRoutes.License.Handle("/remove", ApiAdminSystemRequired(removeLicense)).Methods("POST")
-	BaseRoutes.License.Handle("/client_config", ApiAppHandler(getClientLicenceConfig)).Methods("GET")
+	api.BaseRoutes.License.Handle("/add", api.ApiAdminSystemRequired(addLicense)).Methods("POST")
+	api.BaseRoutes.License.Handle("/remove", api.ApiAdminSystemRequired(removeLicense)).Methods("POST")
+	api.BaseRoutes.License.Handle("/client_config", api.ApiAppHandler(getClientLicenceConfig)).Methods("GET")
 }
 
 func addLicense(c *Context, w http.ResponseWriter, r *http.Request) {
 	c.LogAudit("attempt")
-	err := r.ParseMultipartForm(*utils.Cfg.FileSettings.MaxFileSize)
+	err := r.ParseMultipartForm(*c.App.Config().FileSettings.MaxFileSize)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -34,30 +33,28 @@ func addLicense(c *Context, w http.ResponseWriter, r *http.Request) {
 
 	fileArray, ok := m.File["license"]
 	if !ok {
-		c.Err = model.NewLocAppError("addLicense", "api.license.add_license.no_file.app_error", nil, "")
-		c.Err.StatusCode = http.StatusBadRequest
+		c.Err = model.NewAppError("addLicense", "api.license.add_license.no_file.app_error", nil, "", http.StatusBadRequest)
 		return
 	}
 
 	if len(fileArray) <= 0 {
-		c.Err = model.NewLocAppError("addLicense", "api.license.add_license.array.app_error", nil, "")
-		c.Err.StatusCode = http.StatusBadRequest
+		c.Err = model.NewAppError("addLicense", "api.license.add_license.array.app_error", nil, "", http.StatusBadRequest)
 		return
 	}
 
 	fileData := fileArray[0]
 
 	file, err := fileData.Open()
-	defer file.Close()
 	if err != nil {
-		c.Err = model.NewLocAppError("addLicense", "api.license.add_license.open.app_error", nil, err.Error())
+		c.Err = model.NewAppError("addLicense", "api.license.add_license.open.app_error", nil, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	defer file.Close()
 
 	buf := bytes.NewBuffer(nil)
 	io.Copy(buf, file)
 
-	if license, err := app.SaveLicense(buf.Bytes()); err != nil {
+	if license, err := c.App.SaveLicense(buf.Bytes()); err != nil {
 		if err.Id == model.EXPIRED_LICENSE_ERROR {
 			c.LogAudit("failed - expired or non-started license")
 		} else if err.Id == model.INVALID_LICENSE_ERROR {
@@ -76,7 +73,7 @@ func addLicense(c *Context, w http.ResponseWriter, r *http.Request) {
 func removeLicense(c *Context, w http.ResponseWriter, r *http.Request) {
 	c.LogAudit("")
 
-	if err := app.RemoveLicense(); err != nil {
+	if err := c.App.RemoveLicense(); err != nil {
 		c.Err = err
 		return
 	}
@@ -87,17 +84,17 @@ func removeLicense(c *Context, w http.ResponseWriter, r *http.Request) {
 }
 
 func getClientLicenceConfig(c *Context, w http.ResponseWriter, r *http.Request) {
-	useSanitizedLicense := !app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM)
+	useSanitizedLicense := !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM)
 
 	etag := utils.GetClientLicenseEtag(useSanitizedLicense)
-	if HandleEtag(etag, "Get Client License Config", w, r) {
+	if c.HandleEtag(etag, "Get Client License Config", w, r) {
 		return
 	}
 
 	var clientLicense map[string]string
 
 	if useSanitizedLicense {
-		clientLicense = utils.ClientLicense
+		clientLicense = utils.ClientLicense()
 	} else {
 		clientLicense = utils.GetSanitizedClientLicense()
 	}

@@ -4,8 +4,9 @@
 package utils
 
 import (
-	"github.com/mattermost/platform/model"
 	"testing"
+
+	"github.com/mattermost/mattermost-server/model"
 )
 
 func TestSetLicense(t *testing.T) {
@@ -54,14 +55,14 @@ func TestValidateLicense(t *testing.T) {
 func TestClientLicenseEtag(t *testing.T) {
 	etag1 := GetClientLicenseEtag(false)
 
-	ClientLicense["SomeFeature"] = "true"
+	SetClientLicense(map[string]string{"SomeFeature": "true", "IsLicensed": "true"})
 
 	etag2 := GetClientLicenseEtag(false)
 	if etag1 == etag2 {
 		t.Fatal("etags should not match")
 	}
 
-	ClientLicense["SomeFeature"] = "false"
+	SetClientLicense(map[string]string{"SomeFeature": "true", "IsLicensed": "false"})
 
 	etag3 := GetClientLicenseEtag(false)
 	if etag2 == etag3 {

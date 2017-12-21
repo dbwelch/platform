@@ -7,17 +7,16 @@ import (
 	"net/http"
 
 	l4g "github.com/alecthomas/log4go"
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
-func InitReaction() {
+func (api *API) InitReaction() {
 	l4g.Debug(utils.T("api.reaction.init.debug"))
 
-	BaseRoutes.Reactions.Handle("", ApiSessionRequired(saveReaction)).Methods("POST")
-	BaseRoutes.Post.Handle("/reactions", ApiSessionRequired(getReactions)).Methods("GET")
-	BaseRoutes.ReactionByNameForPostForUser.Handle("", ApiSessionRequired(deleteReaction)).Methods("DELETE")
+	api.BaseRoutes.Reactions.Handle("", api.ApiSessionRequired(saveReaction)).Methods("POST")
+	api.BaseRoutes.Post.Handle("/reactions", api.ApiSessionRequired(getReactions)).Methods("GET")
+	api.BaseRoutes.ReactionByNameForPostForUser.Handle("", api.ApiSessionRequired(deleteReaction)).Methods("DELETE")
 }
 
 func saveReaction(c *Context, w http.ResponseWriter, r *http.Request) {
@@ -28,23 +27,21 @@ func saveReaction(c *Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(reaction.UserId) != 26 || len(reaction.PostId) != 26 || len(reaction.EmojiName) == 0 || len(reaction.EmojiName) > 64 {
-		c.Err = model.NewLocAppError("saveReaction", "api.reaction.save_reaction.invalid.app_error", nil, "")
-		c.Err.StatusCode = http.StatusBadRequest
+		c.Err = model.NewAppError("saveReaction", "api.reaction.save_reaction.invalid.app_error", nil, "", http.StatusBadRequest)
 		return
 	}
 
 	if reaction.UserId != c.Session.UserId {
-		c.Err = model.NewLocAppError("saveReaction", "api.reaction.save_reaction.user_id.app_error", nil, "")
-		c.Err.StatusCode = http.StatusForbidden
+		c.Err = model.NewAppError("saveReaction", "api.reaction.save_reaction.user_id.app_error", nil, "", http.StatusForbidden)
 		return
 	}
 
-	if !app.SessionHasPermissionToChannelByPost(c.Session, reaction.PostId, model.PERMISSION_READ_CHANNEL) {
+	if !c.App.SessionHasPermissionToChannelByPost(c.Session, reaction.PostId, model.PERMISSION_READ_CHANNEL) {
 		c.SetPermissionError(model.PERMISSION_READ_CHANNEL)
 		return
 	}
 
-	if reaction, err := app.SaveReactionForPost(reaction); err != nil {
+	if reaction, err := c.App.SaveReactionForPost(reaction); err != nil {
 		c.Err = err
 		return
 	} else {
@@ -59,12 +56,12 @@ func getReactions(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !app.SessionHasPermissionToChannelByPost(c.Session, c.Params.PostId, model.PERMISSION_READ_CHANNEL) {
+	if !c.App.SessionHasPermissionToChannelByPost(c.Session, c.Params.PostId, model.PERMISSION_READ_CHANNEL) {
 		c.SetPermissionError(model.PERMISSION_READ_CHANNEL)
 		return
 	}
 
-	if reactions, err := app.GetReactionsForPost(c.Params.PostId); err != nil {
+	if reactions, err := c.App.GetReactionsForPost(c.Params.PostId); err != nil {
 		c.Err = err
 		return
 	} else {
@@ -89,12 +86,12 @@ func deleteReaction(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !app.SessionHasPermissionToChannelByPost(c.Session, c.Params.PostId, model.PERMISSION_READ_CHANNEL) {
+	if !c.App.SessionHasPermissionToChannelByPost(c.Session, c.Params.PostId, model.PERMISSION_READ_CHANNEL) {
 		c.SetPermissionError(model.PERMISSION_READ_CHANNEL)
 		return
 	}
 
-	if c.Params.UserId != c.Session.UserId && !app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
+	if c.Params.UserId != c.Session.UserId && !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_SYSTEM)
 		return
 	}
@@ -105,7 +102,7 @@ func deleteReaction(c *Context, w http.ResponseWriter, r *http.Request) {
 		EmojiName: c.Params.EmojiName,
 	}
 
-	err := app.DeleteReactionForPost(reaction)
+	err := c.App.DeleteReactionForPost(reaction)
 	if err != nil {
 		c.Err = err
 		return

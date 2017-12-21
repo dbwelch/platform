@@ -10,16 +10,16 @@ import (
 
 	l4g "github.com/alecthomas/log4go"
 
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
-func InitGeneral() {
+func (api *API) InitGeneral() {
 	l4g.Debug(utils.T("api.general.init.debug"))
 
-	BaseRoutes.General.Handle("/client_props", ApiAppHandler(getClientConfig)).Methods("GET")
-	BaseRoutes.General.Handle("/log_client", ApiAppHandler(logClient)).Methods("POST")
-	BaseRoutes.General.Handle("/ping", ApiAppHandler(ping)).Methods("GET")
+	api.BaseRoutes.General.Handle("/client_props", api.ApiAppHandler(getClientConfig)).Methods("GET")
+	api.BaseRoutes.General.Handle("/log_client", api.ApiAppHandler(logClient)).Methods("POST")
+	api.BaseRoutes.General.Handle("/ping", api.ApiAppHandler(ping)).Methods("GET")
 }
 
 func getClientConfig(c *Context, w http.ResponseWriter, r *http.Request) {
@@ -29,8 +29,15 @@ func getClientConfig(c *Context, w http.ResponseWriter, r *http.Request) {
 func logClient(c *Context, w http.ResponseWriter, r *http.Request) {
 	forceToDebug := false
 
-	if !*utils.Cfg.ServiceSettings.EnableDeveloper {
-		forceToDebug = true
+	if !*c.App.Config().ServiceSettings.EnableDeveloper {
+		if c.Session.UserId == "" {
+			c.Err = model.NewAppError("Permissions", "api.context.permissions.app_error", nil, "", http.StatusForbidden)
+			return
+		}
+
+		if !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
+			forceToDebug = true
+		}
 	}
 
 	m := model.MapFromJson(r.Body)

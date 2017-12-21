@@ -428,7 +428,7 @@ func TestMemberList_ResolveAddr_TCP_First(t *testing.T) {
 			ipPort{net.ParseIP("2001:db8:a0b:12f0::1"), port},
 		}
 		if !reflect.DeepEqual(ips, expected) {
-			t.Fatalf("bad: %#v", ips)
+			t.Fatalf("bad: %#v expected: %#v", ips, expected)
 		}
 	}
 }

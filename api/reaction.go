@@ -8,17 +8,16 @@ import (
 
 	l4g "github.com/alecthomas/log4go"
 	"github.com/gorilla/mux"
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
-func InitReaction() {
+func (api *API) InitReaction() {
 	l4g.Debug(utils.T("api.reaction.init.debug"))
 
-	BaseRoutes.NeedPost.Handle("/reactions/save", ApiUserRequired(saveReaction)).Methods("POST")
-	BaseRoutes.NeedPost.Handle("/reactions/delete", ApiUserRequired(deleteReaction)).Methods("POST")
-	BaseRoutes.NeedPost.Handle("/reactions", ApiUserRequired(listReactions)).Methods("GET")
+	api.BaseRoutes.NeedPost.Handle("/reactions/save", api.ApiUserRequired(saveReaction)).Methods("POST")
+	api.BaseRoutes.NeedPost.Handle("/reactions/delete", api.ApiUserRequired(deleteReaction)).Methods("POST")
+	api.BaseRoutes.NeedPost.Handle("/reactions", api.ApiUserRequired(listReactions)).Methods("GET")
 }
 
 func saveReaction(c *Context, w http.ResponseWriter, r *http.Request) {
@@ -29,8 +28,7 @@ func saveReaction(c *Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	if reaction.UserId != c.Session.UserId {
-		c.Err = model.NewLocAppError("saveReaction", "api.reaction.save_reaction.user_id.app_error", nil, "")
-		c.Err.StatusCode = http.StatusForbidden
+		c.Err = model.NewAppError("saveReaction", "api.reaction.save_reaction.user_id.app_error", nil, "", http.StatusForbidden)
 		return
 	}
 
@@ -42,7 +40,7 @@ func saveReaction(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !app.SessionHasPermissionToChannel(c.Session, channelId, model.PERMISSION_READ_CHANNEL) {
+	if !c.App.SessionHasPermissionToChannel(c.Session, channelId, model.PERMISSION_READ_CHANNEL) {
 		c.SetPermissionError(model.PERMISSION_READ_CHANNEL)
 		return
 	}
@@ -55,17 +53,16 @@ func saveReaction(c *Context, w http.ResponseWriter, r *http.Request) {
 
 	var post *model.Post
 
-	if result := <-app.Srv.Store.Post().Get(reaction.PostId); result.Err != nil {
+	if result := <-c.App.Srv.Store.Post().Get(reaction.PostId); result.Err != nil {
 		c.Err = result.Err
 		return
 	} else if post = result.Data.(*model.PostList).Posts[postId]; post.ChannelId != channelId {
-		c.Err = model.NewLocAppError("saveReaction", "api.reaction.save_reaction.mismatched_channel_id.app_error",
-			nil, "channelId="+channelId+", post.ChannelId="+post.ChannelId+", postId="+postId)
-		c.Err.StatusCode = http.StatusBadRequest
+		c.Err = model.NewAppError("saveReaction", "api.reaction.save_reaction.mismatched_channel_id.app_error",
+			nil, "channelId="+channelId+", post.ChannelId="+post.ChannelId+", postId="+postId, http.StatusBadRequest)
 		return
 	}
 
-	if reaction, err := app.SaveReactionForPost(reaction); err != nil {
+	if reaction, err := c.App.SaveReactionForPost(reaction); err != nil {
 		c.Err = err
 		return
 	} else {
@@ -82,8 +79,7 @@ func deleteReaction(c *Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	if reaction.UserId != c.Session.UserId {
-		c.Err = model.NewLocAppError("deleteReaction", "api.reaction.delete_reaction.user_id.app_error", nil, "")
-		c.Err.StatusCode = http.StatusForbidden
+		c.Err = model.NewAppError("deleteReaction", "api.reaction.delete_reaction.user_id.app_error", nil, "", http.StatusForbidden)
 		return
 	}
 
@@ -95,7 +91,7 @@ func deleteReaction(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !app.SessionHasPermissionToChannel(c.Session, channelId, model.PERMISSION_READ_CHANNEL) {
+	if !c.App.SessionHasPermissionToChannel(c.Session, channelId, model.PERMISSION_READ_CHANNEL) {
 		c.SetPermissionError(model.PERMISSION_READ_CHANNEL)
 		return
 	}
@@ -106,30 +102,13 @@ func deleteReaction(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := app.DeleteReactionForPost(reaction)
+	err := c.App.DeleteReactionForPost(reaction)
 	if err != nil {
 		c.Err = err
 		return
 	}
 
 	ReturnStatusOK(w)
-}
-
-func sendReactionEvent(event string, channelId string, reaction *model.Reaction, post *model.Post) {
-	// send out that a reaction has been added/removed
-
-	message := model.NewWebSocketEvent(event, "", channelId, "", nil)
-	message.Add("reaction", reaction.ToJson())
-	app.Publish(message)
-
-	// THe post is always modified since the UpdateAt always changes
-	app.InvalidateCacheForChannelPosts(post.ChannelId)
-	post.HasReactions = true
-	post.UpdateAt = model.GetMillis()
-	umessage := model.NewWebSocketEvent(model.WEBSOCKET_EVENT_POST_EDITED, "", channelId, "", nil)
-	umessage.Add("post", post.ToJson())
-	app.Publish(umessage)
-
 }
 
 func listReactions(c *Context, w http.ResponseWriter, r *http.Request) {
@@ -147,9 +126,9 @@ func listReactions(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pchan := app.Srv.Store.Post().Get(postId)
+	pchan := c.App.Srv.Store.Post().Get(postId)
 
-	if !app.SessionHasPermissionToChannel(c.Session, channelId, model.PERMISSION_READ_CHANNEL) {
+	if !c.App.SessionHasPermissionToChannel(c.Session, channelId, model.PERMISSION_READ_CHANNEL) {
 		c.SetPermissionError(model.PERMISSION_READ_CHANNEL)
 		return
 	}
@@ -158,13 +137,12 @@ func listReactions(c *Context, w http.ResponseWriter, r *http.Request) {
 		c.Err = result.Err
 		return
 	} else if post := result.Data.(*model.PostList).Posts[postId]; post.ChannelId != channelId {
-		c.Err = model.NewLocAppError("listReactions", "api.reaction.list_reactions.mismatched_channel_id.app_error",
-			nil, "channelId="+channelId+", post.ChannelId="+post.ChannelId+", postId="+postId)
-		c.Err.StatusCode = http.StatusBadRequest
+		c.Err = model.NewAppError("listReactions", "api.reaction.list_reactions.mismatched_channel_id.app_error",
+			nil, "channelId="+channelId+", post.ChannelId="+post.ChannelId+", postId="+postId, http.StatusBadRequest)
 		return
 	}
 
-	if result := <-app.Srv.Store.Reaction().GetForPost(postId, true); result.Err != nil {
+	if result := <-c.App.Srv.Store.Reaction().GetForPost(postId, true); result.Err != nil {
 		c.Err = result.Err
 		return
 	} else {

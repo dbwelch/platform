@@ -3,7 +3,7 @@
 
 package store
 
-import "github.com/mattermost/platform/model"
+import "github.com/mattermost/mattermost-server/model"
 import "context"
 
 type ResultHandler func(*StoreResult)
@@ -30,4 +30,5 @@ type LayeredStoreSupplier interface {
 	ReactionDelete(ctx context.Context, reaction *model.Reaction, hints ...LayeredStoreHint) *LayeredStoreSupplierResult
 	ReactionGetForPost(ctx context.Context, postId string, hints ...LayeredStoreHint) *LayeredStoreSupplierResult
 	ReactionDeleteAllWithEmojiName(ctx context.Context, emojiName string, hints ...LayeredStoreHint) *LayeredStoreSupplierResult
+	ReactionPermanentDeleteBatch(ctx context.Context, endTime int64, limit int64, hints ...LayeredStoreHint) *LayeredStoreSupplierResult
 }

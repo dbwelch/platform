@@ -4,19 +4,14 @@
 package jobs
 
 import (
-	"github.com/mattermost/platform/model"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 type ElasticsearchIndexerInterface interface {
 	MakeWorker() model.Worker
 }
 
-var theElasticsearchIndexerInterface ElasticsearchIndexerInterface
-
-func RegisterElasticsearchIndexerInterface(newInterface ElasticsearchIndexerInterface) {
-	theElasticsearchIndexerInterface = newInterface
-}
-
-func GetElasticsearchIndexerInterface() ElasticsearchIndexerInterface {
-	return theElasticsearchIndexerInterface
+type ElasticsearchAggregatorInterface interface {
+	MakeWorker() model.Worker
+	MakeScheduler() model.Scheduler
 }

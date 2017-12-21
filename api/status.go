@@ -8,20 +8,19 @@ import (
 
 	l4g "github.com/alecthomas/log4go"
 
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
-func InitStatus() {
+func (api *API) InitStatus() {
 	l4g.Debug(utils.T("api.status.init.debug"))
 
-	BaseRoutes.Users.Handle("/status", ApiUserRequired(getStatusesHttp)).Methods("GET")
-	BaseRoutes.Users.Handle("/status/ids", ApiUserRequired(getStatusesByIdsHttp)).Methods("POST")
+	api.BaseRoutes.Users.Handle("/status", api.ApiUserRequired(getStatusesHttp)).Methods("GET")
+	api.BaseRoutes.Users.Handle("/status/ids", api.ApiUserRequired(getStatusesByIdsHttp)).Methods("POST")
 }
 
 func getStatusesHttp(c *Context, w http.ResponseWriter, r *http.Request) {
-	statusMap := model.StatusMapToInterfaceMap(app.GetAllStatuses())
+	statusMap := model.StatusMapToInterfaceMap(c.App.GetAllStatuses())
 	w.Write([]byte(model.StringInterfaceToJson(statusMap)))
 }
 
@@ -33,7 +32,7 @@ func getStatusesByIdsHttp(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	statusMap, err := app.GetStatusesByIds(userIds)
+	statusMap, err := c.App.GetStatusesByIds(userIds)
 	if err != nil {
 		c.Err = err
 		return

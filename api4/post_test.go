@@ -5,6 +5,7 @@ package api4
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -14,17 +15,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/app"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
 func TestCreatePost(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
-	post := &model.Post{ChannelId: th.BasicChannel.Id, Message: "#hashtag a" + model.NewId() + "a"}
+	post := &model.Post{ChannelId: th.BasicChannel.Id, Message: "#hashtag a" + model.NewId() + "a", Props: model.StringInterface{model.PROPS_ADD_CHANNEL_MEMBER: "no good"}}
 	rpost, resp := Client.CreatePost(post)
 	CheckNoError(t, resp)
 	CheckCreatedStatus(t, resp)
@@ -43,6 +44,10 @@ func TestCreatePost(t *testing.T) {
 
 	if rpost.EditAt != 0 {
 		t.Fatal("newly created post shouldn't have EditAt set")
+	}
+
+	if rpost.Props[model.PROPS_ADD_CHANNEL_MEMBER] != nil {
+		t.Fatal("newly created post shouldn't have Props['add_channel_member'] set")
 	}
 
 	post.RootId = rpost.Id
@@ -66,6 +71,13 @@ func TestCreatePost(t *testing.T) {
 		t.Fatal("create at should not match")
 	}
 
+	post.RootId = ""
+	post.ParentId = ""
+	post.Type = model.POST_SYSTEM_GENERIC
+	_, resp = Client.CreatePost(post)
+	CheckBadRequestStatus(t, resp)
+
+	post.Type = ""
 	post.RootId = rpost2.Id
 	post.ParentId = rpost2.Id
 	_, resp = Client.CreatePost(post)
@@ -110,23 +122,31 @@ func testCreatePostWithOutgoingHook(
 	hookContentType, expectedContentType, message, triggerWord string,
 	fileIds []string,
 	triggerWhen int,
+	commentPostType bool,
 ) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	user := th.SystemAdminUser
 	team := th.BasicTeam
 	channel := th.BasicChannel
 
-	enableOutgoingHooks := utils.Cfg.ServiceSettings.EnableOutgoingWebhooks
-	enableAdminOnlyHooks := utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations
+	enableOutgoingHooks := th.App.Config().ServiceSettings.EnableOutgoingWebhooks
+	enableAdminOnlyHooks := th.App.Config().ServiceSettings.EnableOnlyAdminIntegrations
+	allowedInternalConnections := *th.App.Config().ServiceSettings.AllowedUntrustedInternalConnections
 	defer func() {
-		utils.Cfg.ServiceSettings.EnableOutgoingWebhooks = enableOutgoingHooks
-		utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations = enableAdminOnlyHooks
-		utils.SetDefaultRolesBasedOnConfig()
+		th.App.UpdateConfig(func(cfg *model.Config) { cfg.ServiceSettings.EnableOutgoingWebhooks = enableOutgoingHooks })
+		th.App.UpdateConfig(func(cfg *model.Config) { cfg.ServiceSettings.EnableOnlyAdminIntegrations = enableAdminOnlyHooks })
+		th.App.SetDefaultRolesBasedOnConfig()
+		th.App.UpdateConfig(func(cfg *model.Config) {
+			cfg.ServiceSettings.AllowedUntrustedInternalConnections = &allowedInternalConnections
+		})
 	}()
-	utils.Cfg.ServiceSettings.EnableOutgoingWebhooks = true
-	*utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations = true
-	utils.SetDefaultRolesBasedOnConfig()
+	th.App.UpdateConfig(func(cfg *model.Config) { cfg.ServiceSettings.EnableOutgoingWebhooks = true })
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableOnlyAdminIntegrations = true })
+	th.App.SetDefaultRolesBasedOnConfig()
+	th.App.UpdateConfig(func(cfg *model.Config) {
+		*cfg.ServiceSettings.AllowedUntrustedInternalConnections = "localhost 127.0.0.1"
+	})
 
 	var hook *model.OutgoingWebhook
 	var post *model.Post
@@ -181,6 +201,7 @@ func testCreatePostWithOutgoingHook(
 			}
 
 			expectedFormValues, _ := url.ParseQuery(expectedPayload.ToFormValues())
+
 			if !reflect.DeepEqual(expectedFormValues, r.Form) {
 				t.Logf("Form values are: %q\n, should be: %q\n", r.Form, expectedFormValues)
 				success <- false
@@ -188,6 +209,20 @@ func testCreatePostWithOutgoingHook(
 			}
 		}
 
+		respPostType := "" //if is empty or post will do a normal post.
+		if commentPostType {
+			respPostType = model.OUTGOING_HOOK_RESPONSE_TYPE_COMMENT
+		}
+
+		outGoingHookResponse := &model.OutgoingWebhookResponse{
+			Text:         model.NewString("some test text"),
+			Username:     "TestCommandServer",
+			IconURL:      "https://www.mattermost.org/wp-content/uploads/2016/04/icon.png",
+			Type:         "custom_as",
+			ResponseType: respPostType,
+		}
+
+		fmt.Fprintf(w, outGoingHookResponse.ToJson())
 		success <- true
 	}))
 	defer ts.Close()
@@ -232,39 +267,63 @@ func testCreatePostWithOutgoingHook(
 	case <-time.After(time.Second):
 		t.Fatal("Timeout, test server did not send the webhook.")
 	}
+
+	if commentPostType {
+		time.Sleep(time.Millisecond * 100)
+		postList, resp := th.SystemAdminClient.GetPostThread(post.Id, "")
+		CheckNoError(t, resp)
+		if postList.Order[0] != post.Id {
+			t.Fatal("wrong order")
+		}
+
+		if _, ok := postList.Posts[post.Id]; !ok {
+			t.Fatal("should have had post")
+		}
+
+		if len(postList.Posts) != 2 {
+			t.Fatal("should have 2 posts")
+		}
+
+	}
 }
 
 func TestCreatePostWithOutgoingHook_form_urlencoded(t *testing.T) {
-	testCreatePostWithOutgoingHook(t, "application/x-www-form-urlencoded", "application/x-www-form-urlencoded", "triggerword lorem ipsum", "triggerword", []string{"file_id_1"}, app.TRIGGERWORDS_EXACT_MATCH)
-	testCreatePostWithOutgoingHook(t, "application/x-www-form-urlencoded", "application/x-www-form-urlencoded", "triggerwordaaazzz lorem ipsum", "triggerword", []string{"file_id_1"}, app.TRIGGERWORDS_STARTS_WITH)
-	testCreatePostWithOutgoingHook(t, "application/x-www-form-urlencoded", "application/x-www-form-urlencoded", "", "", []string{"file_id_1"}, app.TRIGGERWORDS_EXACT_MATCH)
-	testCreatePostWithOutgoingHook(t, "application/x-www-form-urlencoded", "application/x-www-form-urlencoded", "", "", []string{"file_id_1"}, app.TRIGGERWORDS_STARTS_WITH)
+	testCreatePostWithOutgoingHook(t, "application/x-www-form-urlencoded", "application/x-www-form-urlencoded", "triggerword lorem ipsum", "triggerword", []string{"file_id_1"}, app.TRIGGERWORDS_EXACT_MATCH, false)
+	testCreatePostWithOutgoingHook(t, "application/x-www-form-urlencoded", "application/x-www-form-urlencoded", "triggerwordaaazzz lorem ipsum", "triggerword", []string{"file_id_1"}, app.TRIGGERWORDS_STARTS_WITH, false)
+	testCreatePostWithOutgoingHook(t, "application/x-www-form-urlencoded", "application/x-www-form-urlencoded", "", "", []string{"file_id_1"}, app.TRIGGERWORDS_EXACT_MATCH, false)
+	testCreatePostWithOutgoingHook(t, "application/x-www-form-urlencoded", "application/x-www-form-urlencoded", "", "", []string{"file_id_1"}, app.TRIGGERWORDS_STARTS_WITH, false)
+	testCreatePostWithOutgoingHook(t, "application/x-www-form-urlencoded", "application/x-www-form-urlencoded", "triggerword lorem ipsum", "triggerword", []string{"file_id_1"}, app.TRIGGERWORDS_EXACT_MATCH, true)
+	testCreatePostWithOutgoingHook(t, "application/x-www-form-urlencoded", "application/x-www-form-urlencoded", "triggerwordaaazzz lorem ipsum", "triggerword", []string{"file_id_1"}, app.TRIGGERWORDS_STARTS_WITH, true)
 }
 
 func TestCreatePostWithOutgoingHook_json(t *testing.T) {
-	testCreatePostWithOutgoingHook(t, "application/json", "application/json", "triggerword lorem ipsum", "triggerword", []string{"file_id_1, file_id_2"}, app.TRIGGERWORDS_EXACT_MATCH)
-	testCreatePostWithOutgoingHook(t, "application/json", "application/json", "triggerwordaaazzz lorem ipsum", "triggerword", []string{"file_id_1, file_id_2"}, app.TRIGGERWORDS_STARTS_WITH)
-	testCreatePostWithOutgoingHook(t, "application/json", "application/json", "triggerword lorem ipsum", "", []string{"file_id_1"}, app.TRIGGERWORDS_EXACT_MATCH)
-	testCreatePostWithOutgoingHook(t, "application/json", "application/json", "triggerwordaaazzz lorem ipsum", "", []string{"file_id_1"}, app.TRIGGERWORDS_STARTS_WITH)
+	testCreatePostWithOutgoingHook(t, "application/json", "application/json", "triggerword lorem ipsum", "triggerword", []string{"file_id_1, file_id_2"}, app.TRIGGERWORDS_EXACT_MATCH, false)
+	testCreatePostWithOutgoingHook(t, "application/json", "application/json", "triggerwordaaazzz lorem ipsum", "triggerword", []string{"file_id_1, file_id_2"}, app.TRIGGERWORDS_STARTS_WITH, false)
+	testCreatePostWithOutgoingHook(t, "application/json", "application/json", "triggerword lorem ipsum", "", []string{"file_id_1"}, app.TRIGGERWORDS_EXACT_MATCH, false)
+	testCreatePostWithOutgoingHook(t, "application/json", "application/json", "triggerwordaaazzz lorem ipsum", "", []string{"file_id_1"}, app.TRIGGERWORDS_STARTS_WITH, false)
+	testCreatePostWithOutgoingHook(t, "application/json", "application/json", "triggerword lorem ipsum", "triggerword", []string{"file_id_1, file_id_2"}, app.TRIGGERWORDS_EXACT_MATCH, true)
+	testCreatePostWithOutgoingHook(t, "application/json", "application/json", "triggerwordaaazzz lorem ipsum", "", []string{"file_id_1"}, app.TRIGGERWORDS_STARTS_WITH, true)
 }
 
 // hooks created before we added the ContentType field should be considered as
 // application/x-www-form-urlencoded
 func TestCreatePostWithOutgoingHook_no_content_type(t *testing.T) {
-	testCreatePostWithOutgoingHook(t, "", "application/x-www-form-urlencoded", "triggerword lorem ipsum", "triggerword", []string{"file_id_1"}, app.TRIGGERWORDS_EXACT_MATCH)
-	testCreatePostWithOutgoingHook(t, "", "application/x-www-form-urlencoded", "triggerwordaaazzz lorem ipsum", "triggerword", []string{"file_id_1"}, app.TRIGGERWORDS_STARTS_WITH)
-	testCreatePostWithOutgoingHook(t, "", "application/x-www-form-urlencoded", "triggerword lorem ipsum", "", []string{"file_id_1, file_id_2"}, app.TRIGGERWORDS_EXACT_MATCH)
-	testCreatePostWithOutgoingHook(t, "", "application/x-www-form-urlencoded", "triggerwordaaazzz lorem ipsum", "", []string{"file_id_1, file_id_2"}, app.TRIGGERWORDS_STARTS_WITH)
+	testCreatePostWithOutgoingHook(t, "", "application/x-www-form-urlencoded", "triggerword lorem ipsum", "triggerword", []string{"file_id_1"}, app.TRIGGERWORDS_EXACT_MATCH, false)
+	testCreatePostWithOutgoingHook(t, "", "application/x-www-form-urlencoded", "triggerwordaaazzz lorem ipsum", "triggerword", []string{"file_id_1"}, app.TRIGGERWORDS_STARTS_WITH, false)
+	testCreatePostWithOutgoingHook(t, "", "application/x-www-form-urlencoded", "triggerword lorem ipsum", "", []string{"file_id_1, file_id_2"}, app.TRIGGERWORDS_EXACT_MATCH, false)
+	testCreatePostWithOutgoingHook(t, "", "application/x-www-form-urlencoded", "triggerwordaaazzz lorem ipsum", "", []string{"file_id_1, file_id_2"}, app.TRIGGERWORDS_STARTS_WITH, false)
+	testCreatePostWithOutgoingHook(t, "", "application/x-www-form-urlencoded", "triggerword lorem ipsum", "triggerword", []string{"file_id_1"}, app.TRIGGERWORDS_EXACT_MATCH, true)
+	testCreatePostWithOutgoingHook(t, "", "application/x-www-form-urlencoded", "triggerword lorem ipsum", "", []string{"file_id_1, file_id_2"}, app.TRIGGERWORDS_EXACT_MATCH, true)
 }
 
 func TestCreatePostPublic(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	post := &model.Post{ChannelId: th.BasicChannel.Id, Message: "#hashtag a" + model.NewId() + "a"}
 
-	user := model.User{Email: GenerateTestEmail(), Nickname: "Joram Wilander", Password: "hello1", Username: GenerateTestUsername(), Roles: model.ROLE_SYSTEM_USER.Id}
+	user := model.User{Email: GenerateTestEmail(), Nickname: "Joram Wilander", Password: "hello1", Username: GenerateTestUsername(), Roles: model.SYSTEM_USER_ROLE_ID}
 
 	ruser, resp := Client.CreateUser(&user)
 	CheckNoError(t, resp)
@@ -274,8 +333,8 @@ func TestCreatePostPublic(t *testing.T) {
 	_, resp = Client.CreatePost(post)
 	CheckForbiddenStatus(t, resp)
 
-	app.UpdateUserRoles(ruser.Id, model.ROLE_SYSTEM_USER.Id+" "+model.ROLE_SYSTEM_POST_ALL_PUBLIC.Id)
-	app.InvalidateAllCaches()
+	th.App.UpdateUserRoles(ruser.Id, model.SYSTEM_USER_ROLE_ID+" "+model.SYSTEM_POST_ALL_PUBLIC_ROLE_ID, false)
+	th.App.InvalidateAllCaches()
 
 	Client.Login(user.Email, user.Password)
 
@@ -286,10 +345,10 @@ func TestCreatePostPublic(t *testing.T) {
 	_, resp = Client.CreatePost(post)
 	CheckForbiddenStatus(t, resp)
 
-	app.UpdateUserRoles(ruser.Id, model.ROLE_SYSTEM_USER.Id)
-	app.JoinUserToTeam(th.BasicTeam, ruser, "")
-	app.UpdateTeamMemberRoles(th.BasicTeam.Id, ruser.Id, model.ROLE_TEAM_USER.Id+" "+model.ROLE_TEAM_POST_ALL_PUBLIC.Id)
-	app.InvalidateAllCaches()
+	th.App.UpdateUserRoles(ruser.Id, model.SYSTEM_USER_ROLE_ID, false)
+	th.App.JoinUserToTeam(th.BasicTeam, ruser, "")
+	th.App.UpdateTeamMemberRoles(th.BasicTeam.Id, ruser.Id, model.TEAM_USER_ROLE_ID+" "+model.TEAM_POST_ALL_PUBLIC_ROLE_ID)
+	th.App.InvalidateAllCaches()
 
 	Client.Login(user.Email, user.Password)
 
@@ -304,14 +363,14 @@ func TestCreatePostPublic(t *testing.T) {
 
 func TestCreatePostAll(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	post := &model.Post{ChannelId: th.BasicChannel.Id, Message: "#hashtag a" + model.NewId() + "a"}
 
-	user := model.User{Email: GenerateTestEmail(), Nickname: "Joram Wilander", Password: "hello1", Username: GenerateTestUsername(), Roles: model.ROLE_SYSTEM_USER.Id}
+	user := model.User{Email: GenerateTestEmail(), Nickname: "Joram Wilander", Password: "hello1", Username: GenerateTestUsername(), Roles: model.SYSTEM_USER_ROLE_ID}
 
-	directChannel, _ := app.CreateDirectChannel(th.BasicUser.Id, th.BasicUser2.Id)
+	directChannel, _ := th.App.CreateDirectChannel(th.BasicUser.Id, th.BasicUser2.Id)
 
 	ruser, resp := Client.CreateUser(&user)
 	CheckNoError(t, resp)
@@ -321,8 +380,8 @@ func TestCreatePostAll(t *testing.T) {
 	_, resp = Client.CreatePost(post)
 	CheckForbiddenStatus(t, resp)
 
-	app.UpdateUserRoles(ruser.Id, model.ROLE_SYSTEM_USER.Id+" "+model.ROLE_SYSTEM_POST_ALL.Id)
-	app.InvalidateAllCaches()
+	th.App.UpdateUserRoles(ruser.Id, model.SYSTEM_USER_ROLE_ID+" "+model.SYSTEM_POST_ALL_ROLE_ID, false)
+	th.App.InvalidateAllCaches()
 
 	Client.Login(user.Email, user.Password)
 
@@ -337,10 +396,10 @@ func TestCreatePostAll(t *testing.T) {
 	_, resp = Client.CreatePost(post)
 	CheckNoError(t, resp)
 
-	app.UpdateUserRoles(ruser.Id, model.ROLE_SYSTEM_USER.Id)
-	app.JoinUserToTeam(th.BasicTeam, ruser, "")
-	app.UpdateTeamMemberRoles(th.BasicTeam.Id, ruser.Id, model.ROLE_TEAM_USER.Id+" "+model.ROLE_TEAM_POST_ALL.Id)
-	app.InvalidateAllCaches()
+	th.App.UpdateUserRoles(ruser.Id, model.SYSTEM_USER_ROLE_ID, false)
+	th.App.JoinUserToTeam(th.BasicTeam, ruser, "")
+	th.App.UpdateTeamMemberRoles(th.BasicTeam.Id, ruser.Id, model.TEAM_USER_ROLE_ID+" "+model.TEAM_POST_ALL_ROLE_ID)
+	th.App.InvalidateAllCaches()
 
 	Client.Login(user.Email, user.Password)
 
@@ -357,27 +416,94 @@ func TestCreatePostAll(t *testing.T) {
 	CheckForbiddenStatus(t, resp)
 }
 
+func TestCreatePostSendOutOfChannelMentions(t *testing.T) {
+	th := Setup().InitBasic().InitSystemAdmin()
+	defer th.TearDown()
+	Client := th.Client
+
+	WebSocketClient, err := th.CreateWebSocketClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	WebSocketClient.Listen()
+
+	inChannelUser := th.CreateUser()
+	th.LinkUserToTeam(inChannelUser, th.BasicTeam)
+	th.App.AddUserToChannel(inChannelUser, th.BasicChannel)
+
+	post1 := &model.Post{ChannelId: th.BasicChannel.Id, Message: "@" + inChannelUser.Username}
+	_, resp := Client.CreatePost(post1)
+	CheckNoError(t, resp)
+	CheckCreatedStatus(t, resp)
+
+	timeout := time.After(300 * time.Millisecond)
+	waiting := true
+	for waiting {
+		select {
+		case event := <-WebSocketClient.EventChannel:
+			if event.Event == model.WEBSOCKET_EVENT_EPHEMERAL_MESSAGE {
+				t.Fatal("should not have ephemeral message event")
+			}
+
+		case <-timeout:
+			waiting = false
+		}
+	}
+
+	outOfChannelUser := th.CreateUser()
+	th.LinkUserToTeam(outOfChannelUser, th.BasicTeam)
+
+	post2 := &model.Post{ChannelId: th.BasicChannel.Id, Message: "@" + outOfChannelUser.Username}
+	_, resp = Client.CreatePost(post2)
+	CheckNoError(t, resp)
+	CheckCreatedStatus(t, resp)
+
+	timeout = time.After(300 * time.Millisecond)
+	waiting = true
+	for waiting {
+		select {
+		case event := <-WebSocketClient.EventChannel:
+			if event.Event != model.WEBSOCKET_EVENT_EPHEMERAL_MESSAGE {
+				// Ignore any other events
+				continue
+			}
+
+			wpost := model.PostFromJson(strings.NewReader(event.Data["post"].(string)))
+			if acm, ok := wpost.Props[model.PROPS_ADD_CHANNEL_MEMBER].(map[string]interface{}); !ok {
+				t.Fatal("should have received ephemeral post with 'add_channel_member' in props")
+			} else {
+				if acm["post_id"] == nil || acm["user_ids"] == nil || acm["usernames"] == nil {
+					t.Fatal("should not be nil")
+				}
+			}
+			waiting = false
+		case <-timeout:
+			t.Fatal("timed out waiting for ephemeral message event")
+		}
+	}
+}
+
 func TestUpdatePost(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 	channel := th.BasicChannel
 
-	isLicensed := utils.IsLicensed
-	license := utils.License
-	allowEditPost := *utils.Cfg.ServiceSettings.AllowEditPost
+	isLicensed := utils.IsLicensed()
+	license := utils.License()
+	allowEditPost := *th.App.Config().ServiceSettings.AllowEditPost
 	defer func() {
-		utils.IsLicensed = isLicensed
-		utils.License = license
-		*utils.Cfg.ServiceSettings.AllowEditPost = allowEditPost
-		utils.SetDefaultRolesBasedOnConfig()
+		utils.SetIsLicensed(isLicensed)
+		utils.SetLicense(license)
+		th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.AllowEditPost = allowEditPost })
+		th.App.SetDefaultRolesBasedOnConfig()
 	}()
-	utils.IsLicensed = true
-	utils.License = &model.License{Features: &model.Features{}}
-	utils.License.Features.SetDefaults()
+	utils.SetIsLicensed(true)
+	utils.SetLicense(&model.License{Features: &model.Features{}})
+	utils.License().Features.SetDefaults()
 
-	*utils.Cfg.ServiceSettings.AllowEditPost = model.ALLOW_EDIT_POST_ALWAYS
-	utils.SetDefaultRolesBasedOnConfig()
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.AllowEditPost = model.ALLOW_EDIT_POST_ALWAYS })
+	th.App.SetDefaultRolesBasedOnConfig()
 
 	post := &model.Post{ChannelId: channel.Id, Message: "zz" + model.NewId() + "a"}
 	rpost, resp := Client.CreatePost(post)
@@ -407,6 +533,7 @@ func TestUpdatePost(t *testing.T) {
 
 	msg1 := "#hashtag a" + model.NewId() + " update post again"
 	rpost.Message = msg1
+	rpost.Props[model.PROPS_ADD_CHANNEL_MEMBER] = "no good"
 	rrupost, resp := Client.UpdatePost(rpost.Id, rpost)
 	CheckNoError(t, resp)
 
@@ -414,9 +541,14 @@ func TestUpdatePost(t *testing.T) {
 		t.Fatal("failed to updates")
 	}
 
-	post2 := &model.Post{ChannelId: channel.Id, Message: "zz" + model.NewId() + "a", Type: model.POST_JOIN_LEAVE}
-	rpost2, resp := Client.CreatePost(post2)
-	CheckNoError(t, resp)
+	if rrupost.Props[model.PROPS_ADD_CHANNEL_MEMBER] != nil {
+		t.Fatal("failed to sanitize Props['add_channel_member'], should be nil")
+	}
+
+	rpost2, err := th.App.CreatePost(&model.Post{ChannelId: channel.Id, Message: "zz" + model.NewId() + "a", Type: model.POST_JOIN_LEAVE, UserId: th.BasicUser.Id}, channel, false)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	up2 := &model.Post{Id: rpost2.Id, ChannelId: channel.Id, Message: "zz" + model.NewId() + " update post 2"}
 	_, resp = Client.UpdatePost(rpost2.Id, up2)
@@ -438,25 +570,25 @@ func TestUpdatePost(t *testing.T) {
 
 func TestPatchPost(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 	channel := th.BasicChannel
 
-	isLicensed := utils.IsLicensed
-	license := utils.License
-	allowEditPost := *utils.Cfg.ServiceSettings.AllowEditPost
+	isLicensed := utils.IsLicensed()
+	license := utils.License()
+	allowEditPost := *th.App.Config().ServiceSettings.AllowEditPost
 	defer func() {
-		utils.IsLicensed = isLicensed
-		utils.License = license
-		*utils.Cfg.ServiceSettings.AllowEditPost = allowEditPost
-		utils.SetDefaultRolesBasedOnConfig()
+		utils.SetIsLicensed(isLicensed)
+		utils.SetLicense(license)
+		th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.AllowEditPost = allowEditPost })
+		th.App.SetDefaultRolesBasedOnConfig()
 	}()
-	utils.IsLicensed = true
-	utils.License = &model.License{Features: &model.Features{}}
-	utils.License.Features.SetDefaults()
+	utils.SetIsLicensed(true)
+	utils.SetLicense(&model.License{Features: &model.Features{}})
+	utils.License().Features.SetDefaults()
 
-	*utils.Cfg.ServiceSettings.AllowEditPost = model.ALLOW_EDIT_POST_ALWAYS
-	utils.SetDefaultRolesBasedOnConfig()
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.AllowEditPost = model.ALLOW_EDIT_POST_ALWAYS })
+	th.App.SetDefaultRolesBasedOnConfig()
 
 	post := &model.Post{
 		ChannelId:    channel.Id,
@@ -470,21 +602,18 @@ func TestPatchPost(t *testing.T) {
 
 	patch := &model.PostPatch{}
 
-	patch.IsPinned = new(bool)
-	*patch.IsPinned = false
-	patch.Message = new(string)
-	*patch.Message = "#otherhashtag other message"
+	patch.IsPinned = model.NewBool(false)
+	patch.Message = model.NewString("#otherhashtag other message")
 	patch.Props = new(model.StringInterface)
 	*patch.Props = model.StringInterface{"channel_header": "new_header"}
 	patch.FileIds = new(model.StringArray)
 	*patch.FileIds = model.StringArray{"file1", "otherfile2", "otherfile3"}
-	patch.HasReactions = new(bool)
-	*patch.HasReactions = false
+	patch.HasReactions = model.NewBool(false)
 
 	rpost, resp := Client.PatchPost(post.Id, patch)
 	CheckNoError(t, resp)
 
-	if rpost.IsPinned != false {
+	if rpost.IsPinned {
 		t.Fatal("IsPinned did not update properly")
 	}
 	if rpost.Message != "#otherhashtag other message" {
@@ -505,7 +634,7 @@ func TestPatchPost(t *testing.T) {
 	if !reflect.DeepEqual(rpost.FileIds, *patch.FileIds) {
 		t.Fatal("FileIds did not update properly")
 	}
-	if rpost.HasReactions != false {
+	if rpost.HasReactions {
 		t.Fatal("HasReactions did not update properly")
 	}
 
@@ -543,7 +672,7 @@ func TestPatchPost(t *testing.T) {
 
 func TestPinPost(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	post := th.BasicPost
@@ -554,7 +683,7 @@ func TestPinPost(t *testing.T) {
 		t.Fatal("should have passed")
 	}
 
-	if rpost, err := app.GetSinglePost(post.Id); err != nil && rpost.IsPinned != true {
+	if rpost, err := th.App.GetSinglePost(post.Id); err != nil && !rpost.IsPinned {
 		t.Fatal("failed to pin post")
 	}
 
@@ -578,7 +707,7 @@ func TestPinPost(t *testing.T) {
 
 func TestUnpinPost(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	pinnedPost := th.CreatePinnedPost()
@@ -589,7 +718,7 @@ func TestUnpinPost(t *testing.T) {
 		t.Fatal("should have passed")
 	}
 
-	if rpost, err := app.GetSinglePost(pinnedPost.Id); err != nil && rpost.IsPinned != false {
+	if rpost, err := th.App.GetSinglePost(pinnedPost.Id); err != nil && rpost.IsPinned {
 		t.Fatal("failed to pin post")
 	}
 
@@ -613,7 +742,7 @@ func TestUnpinPost(t *testing.T) {
 
 func TestGetPostsForChannel(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	post1 := th.CreatePost()
@@ -725,7 +854,7 @@ func TestGetPostsForChannel(t *testing.T) {
 
 func TestGetFlaggedPostsForUser(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 	user := th.BasicUser
 	team1 := th.BasicTeam
@@ -906,7 +1035,7 @@ func TestGetFlaggedPostsForUser(t *testing.T) {
 
 func TestGetPostsAfterAndBefore(t *testing.T) {
 	th := Setup().InitBasic()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	post1 := th.CreatePost()
@@ -990,7 +1119,7 @@ func TestGetPostsAfterAndBefore(t *testing.T) {
 
 func TestGetPost(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	post, resp := Client.GetPost(th.BasicPost.Id, "")
@@ -1039,7 +1168,7 @@ func TestGetPost(t *testing.T) {
 
 func TestDeletePost(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	_, resp := Client.DeletePost("")
@@ -1069,7 +1198,7 @@ func TestDeletePost(t *testing.T) {
 	CheckUnauthorizedStatus(t, resp)
 
 	status, resp := th.SystemAdminClient.DeletePost(post.Id)
-	if status == false {
+	if !status {
 		t.Fatal("post should return status OK")
 	}
 	CheckNoError(t, resp)
@@ -1077,7 +1206,7 @@ func TestDeletePost(t *testing.T) {
 
 func TestGetPostThread(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	post := &model.Post{ChannelId: th.BasicChannel.Id, Message: "zz" + model.NewId() + "a", RootId: th.BasicPost.Id}
@@ -1135,7 +1264,7 @@ func TestGetPostThread(t *testing.T) {
 
 func TestSearchPosts(t *testing.T) {
 	th := Setup().InitBasic()
-	defer TearDown()
+	defer th.TearDown()
 	th.LoginBasic()
 	Client := th.Client
 
@@ -1196,7 +1325,7 @@ func TestSearchPosts(t *testing.T) {
 
 func TestSearchHashtagPosts(t *testing.T) {
 	th := Setup().InitBasic()
-	defer TearDown()
+	defer th.TearDown()
 	th.LoginBasic()
 	Client := th.Client
 
@@ -1222,7 +1351,7 @@ func TestSearchHashtagPosts(t *testing.T) {
 
 func TestSearchPostsInChannel(t *testing.T) {
 	th := Setup().InitBasic()
-	defer TearDown()
+	defer th.TearDown()
 	th.LoginBasic()
 	Client := th.Client
 
@@ -1288,14 +1417,14 @@ func TestSearchPostsInChannel(t *testing.T) {
 
 func TestSearchPostsFromUser(t *testing.T) {
 	th := Setup().InitBasic()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	th.LoginTeamAdmin()
 	user := th.CreateUser()
-	LinkUserToTeam(user, th.BasicTeam)
-	app.AddUserToChannel(user, th.BasicChannel)
-	app.AddUserToChannel(user, th.BasicChannel2)
+	th.LinkUserToTeam(user, th.BasicTeam)
+	th.App.AddUserToChannel(user, th.BasicChannel)
+	th.App.AddUserToChannel(user, th.BasicChannel2)
 
 	message := "sgtitlereview with space"
 	_ = th.CreateMessagePost(message)
@@ -1352,10 +1481,10 @@ func TestSearchPostsFromUser(t *testing.T) {
 
 func TestGetFileInfosForPost(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
-	fileIds := make([]string, 3, 3)
+	fileIds := make([]string, 3)
 	if data, err := readTestFile("test.png"); err != nil {
 		t.Fatal(err)
 	} else {

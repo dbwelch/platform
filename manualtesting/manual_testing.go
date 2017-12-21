@@ -12,10 +12,10 @@ import (
 	"time"
 
 	l4g "github.com/alecthomas/log4go"
-	"github.com/mattermost/platform/api"
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/api"
+	"github.com/mattermost/mattermost-server/app"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
 type TestEnvironment struct {
@@ -28,8 +28,8 @@ type TestEnvironment struct {
 	Request       *http.Request
 }
 
-func InitManualTesting() {
-	app.Srv.Router.Handle("/manualtest", api.AppHandler(manualTest)).Methods("GET")
+func Init(api3 *api.API) {
+	api3.BaseRoutes.Root.Handle("/manualtest", api3.AppHandler(manualTest)).Methods("GET")
 }
 
 func manualTest(c *api.Context, w http.ResponseWriter, r *http.Request) {
@@ -39,7 +39,7 @@ func manualTest(c *api.Context, w http.ResponseWriter, r *http.Request) {
 	// URL Parameters
 	params, err := url.ParseQuery(r.URL.RawQuery)
 	if err != nil {
-		c.Err = model.NewLocAppError("/manual", "manaultesting.manual_test.parse.app_error", nil, "")
+		c.Err = model.NewAppError("/manual", "manaultesting.manual_test.parse.app_error", nil, "", http.StatusBadRequest)
 		return
 	}
 
@@ -55,7 +55,7 @@ func manualTest(c *api.Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create a client for tests to use
-	client := model.NewClient("http://localhost" + utils.Cfg.ServiceSettings.ListenAddress)
+	client := model.NewClient("http://localhost" + *utils.Cfg.ServiceSettings.ListenAddress)
 
 	// Check for username parameter and create a user if present
 	username, ok1 := params["username"]
@@ -72,7 +72,7 @@ func manualTest(c *api.Context, w http.ResponseWriter, r *http.Request) {
 			Type:        model.TEAM_OPEN,
 		}
 
-		if result := <-app.Srv.Store.Team().Save(team); result.Err != nil {
+		if result := <-c.App.Srv.Store.Team().Save(team); result.Err != nil {
 			c.Err = result.Err
 			return
 		} else {
@@ -80,7 +80,7 @@ func manualTest(c *api.Context, w http.ResponseWriter, r *http.Request) {
 			createdTeam := result.Data.(*model.Team)
 
 			channel := &model.Channel{DisplayName: "Town Square", Name: "town-square", Type: model.CHANNEL_OPEN, TeamId: createdTeam.Id}
-			if _, err := app.CreateChannel(channel, false); err != nil {
+			if _, err := c.App.CreateChannel(channel, false); err != nil {
 				c.Err = err
 				return
 			}
@@ -100,8 +100,8 @@ func manualTest(c *api.Context, w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		<-app.Srv.Store.User().VerifyEmail(result.Data.(*model.User).Id)
-		<-app.Srv.Store.Team().SaveMember(&model.TeamMember{TeamId: teamID, UserId: result.Data.(*model.User).Id})
+		<-c.App.Srv.Store.User().VerifyEmail(result.Data.(*model.User).Id)
+		<-c.App.Srv.Store.Team().SaveMember(&model.TeamMember{TeamId: teamID, UserId: result.Data.(*model.User).Id}, *c.App.Config().TeamSettings.MaxUsersPerTeam)
 
 		newuser := result.Data.(*model.User)
 		userID = newuser.Id
@@ -138,24 +138,22 @@ func manualTest(c *api.Context, w http.ResponseWriter, r *http.Request) {
 
 	// Grab the test ID and pick the test
 	testname, ok := params["test"]
-	var err2 *model.AppError
-	switch testname[0] {
-	case "autolink":
-		err2 = testAutoLink(env)
-		// ADD YOUR NEW TEST HERE!
-	case "general":
-		err2 = nil
+	if !ok {
+		c.Err = model.NewAppError("/manual", "manaultesting.manual_test.parse.app_error", nil, "", http.StatusBadRequest)
+		return
 	}
 
-	if err != nil {
-		c.Err = err2
-		return
+	switch testname[0] {
+	case "autolink":
+		c.Err = testAutoLink(env)
+		// ADD YOUR NEW TEST HERE!
+	case "general":
 	}
 }
 
-func getChannelID(channelname string, teamid string, userid string) (id string, err bool) {
+func getChannelID(a *app.App, channelname string, teamid string, userid string) (id string, err bool) {
 	// Grab all the channels
-	result := <-app.Srv.Store.Channel().GetChannels(teamid, userid)
+	result := <-a.Srv.Store.Channel().GetChannels(teamid, userid)
 	if result.Err != nil {
 		l4g.Debug(utils.T("manaultesting.get_channel_id.unable.debug"))
 		return "", false

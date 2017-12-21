@@ -10,15 +10,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/store"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/store"
 )
 
 func TestUploadFile(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	user := th.BasicUser
@@ -51,7 +49,7 @@ func TestUploadFile(t *testing.T) {
 	}
 
 	var info *model.FileInfo
-	if result := <-app.Srv.Store.FileInfo().Get(uploadInfo.Id); result.Err != nil {
+	if result := <-th.App.Srv.Store.FileInfo().Get(uploadInfo.Id); result.Err != nil {
 		t.Fatal(result.Err)
 	} else {
 		info = result.Data.(*model.FileInfo)
@@ -71,20 +69,22 @@ func TestUploadFile(t *testing.T) {
 		t.Fatal("file preview path should be set in database")
 	}
 
+	date := time.Now().Format("20060102")
+
 	// This also makes sure that the relative path provided above is sanitized out
-	expectedPath := fmt.Sprintf("teams/%v/channels/%v/users/%v/%v/test.png", FILE_TEAM_ID, channel.Id, user.Id, info.Id)
+	expectedPath := fmt.Sprintf("%v/teams/%v/channels/%v/users/%v/%v/test.png", date, FILE_TEAM_ID, channel.Id, user.Id, info.Id)
 	if info.Path != expectedPath {
 		t.Logf("file is saved in %v", info.Path)
 		t.Fatalf("file should've been saved in %v", expectedPath)
 	}
 
-	expectedThumbnailPath := fmt.Sprintf("teams/%v/channels/%v/users/%v/%v/test_thumb.jpg", FILE_TEAM_ID, channel.Id, user.Id, info.Id)
+	expectedThumbnailPath := fmt.Sprintf("%v/teams/%v/channels/%v/users/%v/%v/test_thumb.jpg", date, FILE_TEAM_ID, channel.Id, user.Id, info.Id)
 	if info.ThumbnailPath != expectedThumbnailPath {
 		t.Logf("file thumbnail is saved in %v", info.ThumbnailPath)
 		t.Fatalf("file thumbnail should've been saved in %v", expectedThumbnailPath)
 	}
 
-	expectedPreviewPath := fmt.Sprintf("teams/%v/channels/%v/users/%v/%v/test_preview.jpg", FILE_TEAM_ID, channel.Id, user.Id, info.Id)
+	expectedPreviewPath := fmt.Sprintf("%v/teams/%v/channels/%v/users/%v/%v/test_preview.jpg", date, FILE_TEAM_ID, channel.Id, user.Id, info.Id)
 	if info.PreviewPath != expectedPreviewPath {
 		t.Logf("file preview is saved in %v", info.PreviewPath)
 		t.Fatalf("file preview should've been saved in %v", expectedPreviewPath)
@@ -93,21 +93,30 @@ func TestUploadFile(t *testing.T) {
 	// Wait a bit for files to ready
 	time.Sleep(2 * time.Second)
 
-	if err := cleanupTestFile(info); err != nil {
+	if err := th.cleanupTestFile(info); err != nil {
 		t.Fatal(err)
 	}
 
 	_, resp := Client.UploadFile(data, model.NewId(), "test.png")
 	CheckForbiddenStatus(t, resp)
 
+	_, resp = Client.UploadFile(data, "../../junk", "test.png")
+	CheckForbiddenStatus(t, resp)
+
+	_, resp = th.SystemAdminClient.UploadFile(data, model.NewId(), "test.png")
+	CheckForbiddenStatus(t, resp)
+
+	_, resp = th.SystemAdminClient.UploadFile(data, "../../junk", "test.png")
+	CheckForbiddenStatus(t, resp)
+
 	_, resp = th.SystemAdminClient.UploadFile(data, channel.Id, "test.png")
 	CheckNoError(t, resp)
 
-	enableFileAttachments := *utils.Cfg.FileSettings.EnableFileAttachments
+	enableFileAttachments := *th.App.Config().FileSettings.EnableFileAttachments
 	defer func() {
-		*utils.Cfg.FileSettings.EnableFileAttachments = enableFileAttachments
+		th.App.UpdateConfig(func(cfg *model.Config) { *cfg.FileSettings.EnableFileAttachments = enableFileAttachments })
 	}()
-	*utils.Cfg.FileSettings.EnableFileAttachments = false
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.FileSettings.EnableFileAttachments = false })
 
 	_, resp = th.SystemAdminClient.UploadFile(data, channel.Id, "test.png")
 	if resp.StatusCode != http.StatusNotImplemented && resp.StatusCode != 0 {
@@ -118,11 +127,11 @@ func TestUploadFile(t *testing.T) {
 
 func TestGetFile(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 	channel := th.BasicChannel
 
-	if utils.Cfg.FileSettings.DriverName == "" {
+	if *th.App.Config().FileSettings.DriverName == "" {
 		t.Skip("skipping because no file driver is enabled")
 	}
 
@@ -141,7 +150,7 @@ func TestGetFile(t *testing.T) {
 	data, resp := Client.GetFile(fileId)
 	CheckNoError(t, resp)
 
-	if data == nil || len(data) == 0 {
+	if len(data) == 0 {
 		t.Fatal("should not be empty")
 	}
 
@@ -165,13 +174,78 @@ func TestGetFile(t *testing.T) {
 	CheckNoError(t, resp)
 }
 
-func TestGetFileThumbnail(t *testing.T) {
-	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+func TestGetFileHeaders(t *testing.T) {
+	th := Setup().InitBasic()
+	defer th.TearDown()
+
 	Client := th.Client
 	channel := th.BasicChannel
 
-	if utils.Cfg.FileSettings.DriverName == "" {
+	if *th.App.Config().FileSettings.DriverName == "" {
+		t.Skip("skipping because no file driver is enabled")
+	}
+
+	testHeaders := func(data []byte, filename string, expectedContentType string, getInline bool) func(*testing.T) {
+		return func(t *testing.T) {
+			fileResp, resp := Client.UploadFile(data, channel.Id, filename)
+			CheckNoError(t, resp)
+
+			fileId := fileResp.FileInfos[0].Id
+
+			_, resp = Client.GetFile(fileId)
+			CheckNoError(t, resp)
+
+			if contentType := resp.Header.Get("Content-Type"); !strings.HasPrefix(contentType, expectedContentType) {
+				t.Fatal("returned incorrect Content-Type", contentType)
+			}
+
+			if getInline {
+				if contentDisposition := resp.Header.Get("Content-Disposition"); !strings.HasPrefix(contentDisposition, "inline") {
+					t.Fatal("returned incorrect Content-Disposition", contentDisposition)
+				}
+			} else {
+				if contentDisposition := resp.Header.Get("Content-Disposition"); !strings.HasPrefix(contentDisposition, "attachment") {
+					t.Fatal("returned incorrect Content-Disposition", contentDisposition)
+				}
+			}
+
+			_, resp = Client.DownloadFile(fileId, true)
+			CheckNoError(t, resp)
+
+			if contentType := resp.Header.Get("Content-Type"); !strings.HasPrefix(contentType, expectedContentType) {
+				t.Fatal("returned incorrect Content-Type", contentType)
+			}
+
+			if contentDisposition := resp.Header.Get("Content-Disposition"); !strings.HasPrefix(contentDisposition, "attachment") {
+				t.Fatal("returned incorrect Content-Disposition", contentDisposition)
+			}
+		}
+	}
+
+	data := []byte("ABC")
+
+	t.Run("png", testHeaders(data, "test.png", "image/png", true))
+	t.Run("gif", testHeaders(data, "test.gif", "image/gif", true))
+	t.Run("mp4", testHeaders(data, "test.mp4", "video/mp4", true))
+	t.Run("mp3", testHeaders(data, "test.mp3", "audio/mpeg", true))
+	t.Run("pdf", testHeaders(data, "test.pdf", "application/pdf", false))
+	t.Run("txt", testHeaders(data, "test.txt", "text/plain", false))
+	t.Run("html", testHeaders(data, "test.html", "text/plain", false))
+	t.Run("js", testHeaders(data, "test.js", "text/plain", false))
+	t.Run("go", testHeaders(data, "test.go", "application/octet-stream", false))
+	t.Run("zip", testHeaders(data, "test.zip", "application/zip", false))
+	t.Run("exe", testHeaders(data, "test.exe", "application/x-ms", false))
+	t.Run("no extension", testHeaders(data, "test", "application/octet-stream", false))
+	t.Run("no extension 2", testHeaders([]byte("<html></html>"), "test", "application/octet-stream", false))
+}
+
+func TestGetFileThumbnail(t *testing.T) {
+	th := Setup().InitBasic().InitSystemAdmin()
+	defer th.TearDown()
+	Client := th.Client
+	channel := th.BasicChannel
+
+	if *th.App.Config().FileSettings.DriverName == "" {
 		t.Skip("skipping because no file driver is enabled")
 	}
 
@@ -193,7 +267,7 @@ func TestGetFileThumbnail(t *testing.T) {
 	data, resp := Client.GetFileThumbnail(fileId)
 	CheckNoError(t, resp)
 
-	if data == nil || len(data) == 0 {
+	if len(data) == 0 {
 		t.Fatal("should not be empty")
 	}
 
@@ -219,22 +293,22 @@ func TestGetFileThumbnail(t *testing.T) {
 
 func TestGetFileLink(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 	channel := th.BasicChannel
 
-	if utils.Cfg.FileSettings.DriverName == "" {
+	if *th.App.Config().FileSettings.DriverName == "" {
 		t.Skip("skipping because no file driver is enabled")
 	}
 
-	enablePublicLink := utils.Cfg.FileSettings.EnablePublicLink
-	publicLinkSalt := *utils.Cfg.FileSettings.PublicLinkSalt
+	enablePublicLink := th.App.Config().FileSettings.EnablePublicLink
+	publicLinkSalt := *th.App.Config().FileSettings.PublicLinkSalt
 	defer func() {
-		utils.Cfg.FileSettings.EnablePublicLink = enablePublicLink
-		*utils.Cfg.FileSettings.PublicLinkSalt = publicLinkSalt
+		th.App.UpdateConfig(func(cfg *model.Config) { cfg.FileSettings.EnablePublicLink = enablePublicLink })
+		th.App.UpdateConfig(func(cfg *model.Config) { *cfg.FileSettings.PublicLinkSalt = publicLinkSalt })
 	}()
-	utils.Cfg.FileSettings.EnablePublicLink = true
-	*utils.Cfg.FileSettings.PublicLinkSalt = model.NewId()
+	th.App.UpdateConfig(func(cfg *model.Config) { cfg.FileSettings.EnablePublicLink = true })
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.FileSettings.PublicLinkSalt = model.NewId() })
 
 	fileId := ""
 	if data, err := readTestFile("test.png"); err != nil {
@@ -250,16 +324,16 @@ func TestGetFileLink(t *testing.T) {
 	CheckBadRequestStatus(t, resp)
 
 	// Hacky way to assign file to a post (usually would be done by CreatePost call)
-	store.Must(app.Srv.Store.FileInfo().AttachToPost(fileId, th.BasicPost.Id))
+	store.Must(th.App.Srv.Store.FileInfo().AttachToPost(fileId, th.BasicPost.Id))
 
-	utils.Cfg.FileSettings.EnablePublicLink = false
+	th.App.UpdateConfig(func(cfg *model.Config) { cfg.FileSettings.EnablePublicLink = false })
 	_, resp = Client.GetFileLink(fileId)
 	CheckNotImplementedStatus(t, resp)
 
 	// Wait a bit for files to ready
 	time.Sleep(2 * time.Second)
 
-	utils.Cfg.FileSettings.EnablePublicLink = true
+	th.App.UpdateConfig(func(cfg *model.Config) { cfg.FileSettings.EnablePublicLink = true })
 	link, resp = Client.GetFileLink(fileId)
 	CheckNoError(t, resp)
 	if link == "" {
@@ -285,20 +359,20 @@ func TestGetFileLink(t *testing.T) {
 	_, resp = th.SystemAdminClient.GetFileLink(fileId)
 	CheckNoError(t, resp)
 
-	if result := <-app.Srv.Store.FileInfo().Get(fileId); result.Err != nil {
+	if result := <-th.App.Srv.Store.FileInfo().Get(fileId); result.Err != nil {
 		t.Fatal(result.Err)
 	} else {
-		cleanupTestFile(result.Data.(*model.FileInfo))
+		th.cleanupTestFile(result.Data.(*model.FileInfo))
 	}
 }
 
 func TestGetFilePreview(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 	channel := th.BasicChannel
 
-	if utils.Cfg.FileSettings.DriverName == "" {
+	if *th.App.Config().FileSettings.DriverName == "" {
 		t.Skip("skipping because no file driver is enabled")
 	}
 
@@ -320,7 +394,7 @@ func TestGetFilePreview(t *testing.T) {
 	data, resp := Client.GetFilePreview(fileId)
 	CheckNoError(t, resp)
 
-	if data == nil || len(data) == 0 {
+	if len(data) == 0 {
 		t.Fatal("should not be empty")
 	}
 
@@ -346,12 +420,12 @@ func TestGetFilePreview(t *testing.T) {
 
 func TestGetFileInfo(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 	user := th.BasicUser
 	channel := th.BasicChannel
 
-	if utils.Cfg.FileSettings.DriverName == "" {
+	if *th.App.Config().FileSettings.DriverName == "" {
 		t.Skip("skipping because no file driver is enabled")
 	}
 
@@ -413,22 +487,22 @@ func TestGetFileInfo(t *testing.T) {
 
 func TestGetPublicFile(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 	channel := th.BasicChannel
 
-	if utils.Cfg.FileSettings.DriverName == "" {
+	if *th.App.Config().FileSettings.DriverName == "" {
 		t.Skip("skipping because no file driver is enabled")
 	}
 
-	enablePublicLink := utils.Cfg.FileSettings.EnablePublicLink
-	publicLinkSalt := *utils.Cfg.FileSettings.PublicLinkSalt
+	enablePublicLink := th.App.Config().FileSettings.EnablePublicLink
+	publicLinkSalt := *th.App.Config().FileSettings.PublicLinkSalt
 	defer func() {
-		utils.Cfg.FileSettings.EnablePublicLink = enablePublicLink
-		*utils.Cfg.FileSettings.PublicLinkSalt = publicLinkSalt
+		th.App.UpdateConfig(func(cfg *model.Config) { cfg.FileSettings.EnablePublicLink = enablePublicLink })
+		th.App.UpdateConfig(func(cfg *model.Config) { *cfg.FileSettings.PublicLinkSalt = publicLinkSalt })
 	}()
-	utils.Cfg.FileSettings.EnablePublicLink = true
-	*utils.Cfg.FileSettings.PublicLinkSalt = GenerateTestId()
+	th.App.UpdateConfig(func(cfg *model.Config) { cfg.FileSettings.EnablePublicLink = true })
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.FileSettings.PublicLinkSalt = GenerateTestId() })
 
 	fileId := ""
 	if data, err := readTestFile("test.png"); err != nil {
@@ -441,11 +515,11 @@ func TestGetPublicFile(t *testing.T) {
 	}
 
 	// Hacky way to assign file to a post (usually would be done by CreatePost call)
-	store.Must(app.Srv.Store.FileInfo().AttachToPost(fileId, th.BasicPost.Id))
+	store.Must(th.App.Srv.Store.FileInfo().AttachToPost(fileId, th.BasicPost.Id))
 
-	result := <-app.Srv.Store.FileInfo().Get(fileId)
+	result := <-th.App.Srv.Store.FileInfo().Get(fileId)
 	info := result.Data.(*model.FileInfo)
-	link := app.GeneratePublicLink(Client.Url, info)
+	link := th.App.GeneratePublicLink(Client.Url, info)
 
 	// Wait a bit for files to ready
 	time.Sleep(2 * time.Second)
@@ -459,14 +533,14 @@ func TestGetPublicFile(t *testing.T) {
 		t.Fatal("should've failed to get image with public link without hash", resp.Status)
 	}
 
-	utils.Cfg.FileSettings.EnablePublicLink = false
+	th.App.UpdateConfig(func(cfg *model.Config) { cfg.FileSettings.EnablePublicLink = false })
 	if resp, err := http.Get(link); err == nil && resp.StatusCode != http.StatusNotImplemented {
 		t.Fatal("should've failed to get image with disabled public link")
 	}
 
 	// test after the salt has changed
-	utils.Cfg.FileSettings.EnablePublicLink = true
-	*utils.Cfg.FileSettings.PublicLinkSalt = GenerateTestId()
+	th.App.UpdateConfig(func(cfg *model.Config) { cfg.FileSettings.EnablePublicLink = true })
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.FileSettings.PublicLinkSalt = GenerateTestId() })
 
 	if resp, err := http.Get(link); err == nil && resp.StatusCode != http.StatusBadRequest {
 		t.Fatal("should've failed to get image with public link after salt changed")
@@ -476,9 +550,9 @@ func TestGetPublicFile(t *testing.T) {
 		t.Fatal("should've failed to get image with public link after salt changed")
 	}
 
-	if err := cleanupTestFile(store.Must(app.Srv.Store.FileInfo().Get(fileId)).(*model.FileInfo)); err != nil {
+	if err := th.cleanupTestFile(store.Must(th.App.Srv.Store.FileInfo().Get(fileId)).(*model.FileInfo)); err != nil {
 		t.Fatal(err)
 	}
 
-	cleanupTestFile(info)
+	th.cleanupTestFile(info)
 }

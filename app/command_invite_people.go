@@ -7,8 +7,7 @@ import (
 	"strings"
 
 	l4g "github.com/alecthomas/log4go"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/model"
 	goi18n "github.com/nicksnyder/go-i18n/i18n"
 )
 
@@ -27,9 +26,9 @@ func (me *InvitePeopleProvider) GetTrigger() string {
 	return CMD_INVITE_PEOPLE
 }
 
-func (me *InvitePeopleProvider) GetCommand(T goi18n.TranslateFunc) *model.Command {
+func (me *InvitePeopleProvider) GetCommand(a *App, T goi18n.TranslateFunc) *model.Command {
 	autoComplete := true
-	if !utils.Cfg.EmailSettings.SendEmailNotifications || !utils.Cfg.TeamSettings.EnableUserCreation {
+	if !a.Config().EmailSettings.SendEmailNotifications || !a.Config().TeamSettings.EnableUserCreation {
 		autoComplete = false
 	}
 	return &model.Command{
@@ -41,12 +40,12 @@ func (me *InvitePeopleProvider) GetCommand(T goi18n.TranslateFunc) *model.Comman
 	}
 }
 
-func (me *InvitePeopleProvider) DoCommand(args *model.CommandArgs, message string) *model.CommandResponse {
-	if !utils.Cfg.EmailSettings.SendEmailNotifications {
+func (me *InvitePeopleProvider) DoCommand(a *App, args *model.CommandArgs, message string) *model.CommandResponse {
+	if !a.Config().EmailSettings.SendEmailNotifications {
 		return &model.CommandResponse{ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL, Text: args.T("api.command.invite_people.email_off")}
 	}
 
-	if !utils.Cfg.TeamSettings.EnableUserCreation {
+	if !a.Config().TeamSettings.EnableUserCreation {
 		return &model.CommandResponse{ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL, Text: args.T("api.command.invite_people.invite_off")}
 	}
 
@@ -63,7 +62,7 @@ func (me *InvitePeopleProvider) DoCommand(args *model.CommandArgs, message strin
 		return &model.CommandResponse{ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL, Text: args.T("api.command.invite_people.no_email")}
 	}
 
-	if err := InviteNewUsersToTeam(emailList, args.TeamId, args.UserId); err != nil {
+	if err := a.InviteNewUsersToTeam(emailList, args.TeamId, args.UserId); err != nil {
 		l4g.Error(err.Error())
 		return &model.CommandResponse{ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL, Text: args.T("api.command.invite_people.fail")}
 	}

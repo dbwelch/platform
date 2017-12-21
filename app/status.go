@@ -6,10 +6,9 @@ package app
 import (
 	l4g "github.com/alecthomas/log4go"
 
-	"github.com/mattermost/platform/einterfaces"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/store"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/store"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
 var statusCache *utils.Cache = utils.NewLru(model.STATUS_CACHE_SIZE)
@@ -18,25 +17,25 @@ func ClearStatusCache() {
 	statusCache.Purge()
 }
 
-func AddStatusCacheSkipClusterSend(status *model.Status) {
+func (a *App) AddStatusCacheSkipClusterSend(status *model.Status) {
 	statusCache.Add(status.UserId, status)
 }
 
-func AddStatusCache(status *model.Status) {
-	AddStatusCacheSkipClusterSend(status)
+func (a *App) AddStatusCache(status *model.Status) {
+	a.AddStatusCacheSkipClusterSend(status)
 
-	if einterfaces.GetClusterInterface() != nil {
+	if a.Cluster != nil {
 		msg := &model.ClusterMessage{
 			Event:    model.CLUSTER_EVENT_UPDATE_STATUS,
 			SendType: model.CLUSTER_SEND_BEST_EFFORT,
 			Data:     status.ToJson(),
 		}
-		einterfaces.GetClusterInterface().SendClusterMessage(msg)
+		a.Cluster.SendClusterMessage(msg)
 	}
 }
 
-func GetAllStatuses() map[string]*model.Status {
-	if !*utils.Cfg.ServiceSettings.EnableUserStatuses {
+func (a *App) GetAllStatuses() map[string]*model.Status {
+	if !*a.Config().ServiceSettings.EnableUserStatuses {
 		return map[string]*model.Status{}
 	}
 
@@ -57,13 +56,13 @@ func GetAllStatuses() map[string]*model.Status {
 	return statusMap
 }
 
-func GetStatusesByIds(userIds []string) (map[string]interface{}, *model.AppError) {
-	if !*utils.Cfg.ServiceSettings.EnableUserStatuses {
+func (a *App) GetStatusesByIds(userIds []string) (map[string]interface{}, *model.AppError) {
+	if !*a.Config().ServiceSettings.EnableUserStatuses {
 		return map[string]interface{}{}, nil
 	}
 
 	statusMap := map[string]interface{}{}
-	metrics := einterfaces.GetMetricsInterface()
+	metrics := a.Metrics
 
 	missingUserIds := []string{}
 	for _, userId := range userIds {
@@ -81,13 +80,13 @@ func GetStatusesByIds(userIds []string) (map[string]interface{}, *model.AppError
 	}
 
 	if len(missingUserIds) > 0 {
-		if result := <-Srv.Store.Status().GetByIds(missingUserIds); result.Err != nil {
+		if result := <-a.Srv.Store.Status().GetByIds(missingUserIds); result.Err != nil {
 			return nil, result.Err
 		} else {
 			statuses := result.Data.([]*model.Status)
 
 			for _, s := range statuses {
-				AddStatusCache(s)
+				a.AddStatusCache(s)
 				statusMap[s.UserId] = s.Status
 			}
 		}
@@ -104,13 +103,13 @@ func GetStatusesByIds(userIds []string) (map[string]interface{}, *model.AppError
 }
 
 //GetUserStatusesByIds used by apiV4
-func GetUserStatusesByIds(userIds []string) ([]*model.Status, *model.AppError) {
-	if !*utils.Cfg.ServiceSettings.EnableUserStatuses {
+func (a *App) GetUserStatusesByIds(userIds []string) ([]*model.Status, *model.AppError) {
+	if !*a.Config().ServiceSettings.EnableUserStatuses {
 		return []*model.Status{}, nil
 	}
 
 	var statusMap []*model.Status
-	metrics := einterfaces.GetMetricsInterface()
+	metrics := a.Metrics
 
 	missingUserIds := []string{}
 	for _, userId := range userIds {
@@ -128,13 +127,13 @@ func GetUserStatusesByIds(userIds []string) ([]*model.Status, *model.AppError) {
 	}
 
 	if len(missingUserIds) > 0 {
-		if result := <-Srv.Store.Status().GetByIds(missingUserIds); result.Err != nil {
+		if result := <-a.Srv.Store.Status().GetByIds(missingUserIds); result.Err != nil {
 			return nil, result.Err
 		} else {
 			statuses := result.Data.([]*model.Status)
 
 			for _, s := range statuses {
-				AddStatusCache(s)
+				a.AddStatusCache(s)
 			}
 
 			statusMap = append(statusMap, statuses...)
@@ -161,8 +160,8 @@ func GetUserStatusesByIds(userIds []string) ([]*model.Status, *model.AppError) {
 	return statusMap, nil
 }
 
-func SetStatusOnline(userId string, sessionId string, manual bool) {
-	if !*utils.Cfg.ServiceSettings.EnableUserStatuses {
+func (a *App) SetStatusOnline(userId string, sessionId string, manual bool) {
+	if !*a.Config().ServiceSettings.EnableUserStatuses {
 		return
 	}
 
@@ -174,7 +173,7 @@ func SetStatusOnline(userId string, sessionId string, manual bool) {
 	var status *model.Status
 	var err *model.AppError
 
-	if status, err = GetStatus(userId); err != nil {
+	if status, err = a.GetStatus(userId); err != nil {
 		status = &model.Status{UserId: userId, Status: model.STATUS_ONLINE, Manual: false, LastActivityAt: model.GetMillis(), ActiveChannel: ""}
 		broadcast = true
 	} else {
@@ -195,7 +194,7 @@ func SetStatusOnline(userId string, sessionId string, manual bool) {
 		status.LastActivityAt = model.GetMillis()
 	}
 
-	AddStatusCache(status)
+	a.AddStatusCache(status)
 
 	// Only update the database if the status has changed, the status has been manually set,
 	// or enough time has passed since the previous action
@@ -203,9 +202,9 @@ func SetStatusOnline(userId string, sessionId string, manual bool) {
 
 		var schan store.StoreChannel
 		if broadcast {
-			schan = Srv.Store.Status().SaveOrUpdate(status)
+			schan = a.Srv.Store.Status().SaveOrUpdate(status)
 		} else {
-			schan = Srv.Store.Status().UpdateLastActivityAt(status.UserId, status.LastActivityAt)
+			schan = a.Srv.Store.Status().UpdateLastActivityAt(status.UserId, status.LastActivityAt)
 		}
 
 		if result := <-schan; result.Err != nil {
@@ -214,47 +213,51 @@ func SetStatusOnline(userId string, sessionId string, manual bool) {
 	}
 
 	if broadcast {
-		BroadcastStatus(status)
+		a.BroadcastStatus(status)
 	}
 }
 
-func BroadcastStatus(status *model.Status) {
+func (a *App) BroadcastStatus(status *model.Status) {
 	event := model.NewWebSocketEvent(model.WEBSOCKET_EVENT_STATUS_CHANGE, "", "", status.UserId, nil)
 	event.Add("status", status.Status)
 	event.Add("user_id", status.UserId)
-	go Publish(event)
+	a.Go(func() {
+		a.Publish(event)
+	})
 }
 
-func SetStatusOffline(userId string, manual bool) {
-	if !*utils.Cfg.ServiceSettings.EnableUserStatuses {
+func (a *App) SetStatusOffline(userId string, manual bool) {
+	if !*a.Config().ServiceSettings.EnableUserStatuses {
 		return
 	}
 
-	status, err := GetStatus(userId)
+	status, err := a.GetStatus(userId)
 	if err == nil && status.Manual && !manual {
 		return // manually set status always overrides non-manual one
 	}
 
 	status = &model.Status{UserId: userId, Status: model.STATUS_OFFLINE, Manual: manual, LastActivityAt: model.GetMillis(), ActiveChannel: ""}
 
-	AddStatusCache(status)
+	a.AddStatusCache(status)
 
-	if result := <-Srv.Store.Status().SaveOrUpdate(status); result.Err != nil {
+	if result := <-a.Srv.Store.Status().SaveOrUpdate(status); result.Err != nil {
 		l4g.Error(utils.T("api.status.save_status.error"), userId, result.Err)
 	}
 
 	event := model.NewWebSocketEvent(model.WEBSOCKET_EVENT_STATUS_CHANGE, "", "", status.UserId, nil)
 	event.Add("status", model.STATUS_OFFLINE)
 	event.Add("user_id", status.UserId)
-	go Publish(event)
+	a.Go(func() {
+		a.Publish(event)
+	})
 }
 
-func SetStatusAwayIfNeeded(userId string, manual bool) {
-	if !*utils.Cfg.ServiceSettings.EnableUserStatuses {
+func (a *App) SetStatusAwayIfNeeded(userId string, manual bool) {
+	if !*a.Config().ServiceSettings.EnableUserStatuses {
 		return
 	}
 
-	status, err := GetStatus(userId)
+	status, err := a.GetStatus(userId)
 
 	if err != nil {
 		status = &model.Status{UserId: userId, Status: model.STATUS_OFFLINE, Manual: manual, LastActivityAt: 0, ActiveChannel: ""}
@@ -269,7 +272,7 @@ func SetStatusAwayIfNeeded(userId string, manual bool) {
 			return
 		}
 
-		if !IsUserAway(status.LastActivityAt) {
+		if !a.IsUserAway(status.LastActivityAt) {
 			return
 		}
 	}
@@ -278,16 +281,46 @@ func SetStatusAwayIfNeeded(userId string, manual bool) {
 	status.Manual = manual
 	status.ActiveChannel = ""
 
-	AddStatusCache(status)
+	a.AddStatusCache(status)
 
-	if result := <-Srv.Store.Status().SaveOrUpdate(status); result.Err != nil {
+	if result := <-a.Srv.Store.Status().SaveOrUpdate(status); result.Err != nil {
 		l4g.Error(utils.T("api.status.save_status.error"), userId, result.Err)
 	}
 
 	event := model.NewWebSocketEvent(model.WEBSOCKET_EVENT_STATUS_CHANGE, "", "", status.UserId, nil)
 	event.Add("status", model.STATUS_AWAY)
 	event.Add("user_id", status.UserId)
-	go Publish(event)
+	a.Go(func() {
+		a.Publish(event)
+	})
+}
+
+func (a *App) SetStatusDoNotDisturb(userId string) {
+	if !*a.Config().ServiceSettings.EnableUserStatuses {
+		return
+	}
+
+	status, err := a.GetStatus(userId)
+
+	if err != nil {
+		status = &model.Status{UserId: userId, Status: model.STATUS_OFFLINE, Manual: false, LastActivityAt: 0, ActiveChannel: ""}
+	}
+
+	status.Status = model.STATUS_DND
+	status.Manual = true
+
+	a.AddStatusCache(status)
+
+	if result := <-a.Srv.Store.Status().SaveOrUpdate(status); result.Err != nil {
+		l4g.Error(utils.T("api.status.save_status.error"), userId, result.Err)
+	}
+
+	event := model.NewWebSocketEvent(model.WEBSOCKET_EVENT_STATUS_CHANGE, "", "", status.UserId, nil)
+	event.Add("status", model.STATUS_DND)
+	event.Add("user_id", status.UserId)
+	a.Go(func() {
+		a.Publish(event)
+	})
 }
 
 func GetStatusFromCache(userId string) *model.Status {
@@ -301,8 +334,8 @@ func GetStatusFromCache(userId string) *model.Status {
 	return nil
 }
 
-func GetStatus(userId string) (*model.Status, *model.AppError) {
-	if !*utils.Cfg.ServiceSettings.EnableUserStatuses {
+func (a *App) GetStatus(userId string) (*model.Status, *model.AppError) {
+	if !*a.Config().ServiceSettings.EnableUserStatuses {
 		return &model.Status{}, nil
 	}
 
@@ -311,13 +344,13 @@ func GetStatus(userId string) (*model.Status, *model.AppError) {
 		return status, nil
 	}
 
-	if result := <-Srv.Store.Status().Get(userId); result.Err != nil {
+	if result := <-a.Srv.Store.Status().Get(userId); result.Err != nil {
 		return nil, result.Err
 	} else {
 		return result.Data.(*model.Status), nil
 	}
 }
 
-func IsUserAway(lastActivityAt int64) bool {
-	return model.GetMillis()-lastActivityAt >= *utils.Cfg.TeamSettings.UserStatusAwayTimeout*1000
+func (a *App) IsUserAway(lastActivityAt int64) bool {
+	return model.GetMillis()-lastActivityAt >= *a.Config().TeamSettings.UserStatusAwayTimeout*1000
 }

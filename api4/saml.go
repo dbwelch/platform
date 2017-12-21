@@ -8,29 +8,28 @@ import (
 	"net/http"
 
 	l4g "github.com/alecthomas/log4go"
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
-func InitSaml() {
+func (api *API) InitSaml() {
 	l4g.Debug(utils.T("api.saml.init.debug"))
 
-	BaseRoutes.SAML.Handle("/metadata", ApiHandler(getSamlMetadata)).Methods("GET")
+	api.BaseRoutes.SAML.Handle("/metadata", api.ApiHandler(getSamlMetadata)).Methods("GET")
 
-	BaseRoutes.SAML.Handle("/certificate/public", ApiSessionRequired(addSamlPublicCertificate)).Methods("POST")
-	BaseRoutes.SAML.Handle("/certificate/private", ApiSessionRequired(addSamlPrivateCertificate)).Methods("POST")
-	BaseRoutes.SAML.Handle("/certificate/idp", ApiSessionRequired(addSamlIdpCertificate)).Methods("POST")
+	api.BaseRoutes.SAML.Handle("/certificate/public", api.ApiSessionRequired(addSamlPublicCertificate)).Methods("POST")
+	api.BaseRoutes.SAML.Handle("/certificate/private", api.ApiSessionRequired(addSamlPrivateCertificate)).Methods("POST")
+	api.BaseRoutes.SAML.Handle("/certificate/idp", api.ApiSessionRequired(addSamlIdpCertificate)).Methods("POST")
 
-	BaseRoutes.SAML.Handle("/certificate/public", ApiSessionRequired(removeSamlPublicCertificate)).Methods("DELETE")
-	BaseRoutes.SAML.Handle("/certificate/private", ApiSessionRequired(removeSamlPrivateCertificate)).Methods("DELETE")
-	BaseRoutes.SAML.Handle("/certificate/idp", ApiSessionRequired(removeSamlIdpCertificate)).Methods("DELETE")
+	api.BaseRoutes.SAML.Handle("/certificate/public", api.ApiSessionRequired(removeSamlPublicCertificate)).Methods("DELETE")
+	api.BaseRoutes.SAML.Handle("/certificate/private", api.ApiSessionRequired(removeSamlPrivateCertificate)).Methods("DELETE")
+	api.BaseRoutes.SAML.Handle("/certificate/idp", api.ApiSessionRequired(removeSamlIdpCertificate)).Methods("DELETE")
 
-	BaseRoutes.SAML.Handle("/certificate/status", ApiSessionRequired(getSamlCertificateStatus)).Methods("GET")
+	api.BaseRoutes.SAML.Handle("/certificate/status", api.ApiSessionRequired(getSamlCertificateStatus)).Methods("GET")
 }
 
 func getSamlMetadata(c *Context, w http.ResponseWriter, r *http.Request) {
-	metadata, err := app.GetSamlMetadata()
+	metadata, err := c.App.GetSamlMetadata()
 	if err != nil {
 		c.Err = err
 		return
@@ -41,8 +40,8 @@ func getSamlMetadata(c *Context, w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(metadata))
 }
 
-func parseSamlCertificateRequest(r *http.Request) (*multipart.FileHeader, *model.AppError) {
-	err := r.ParseMultipartForm(*utils.Cfg.FileSettings.MaxFileSize)
+func parseSamlCertificateRequest(r *http.Request, maxFileSize int64) (*multipart.FileHeader, *model.AppError) {
+	err := r.ParseMultipartForm(maxFileSize)
 	if err != nil {
 		return nil, model.NewAppError("addSamlCertificate", "api.admin.add_certificate.no_file.app_error", nil, err.Error(), http.StatusBadRequest)
 	}
@@ -62,18 +61,18 @@ func parseSamlCertificateRequest(r *http.Request) (*multipart.FileHeader, *model
 }
 
 func addSamlPublicCertificate(c *Context, w http.ResponseWriter, r *http.Request) {
-	if !app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
+	if !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_SYSTEM)
 		return
 	}
 
-	fileData, err := parseSamlCertificateRequest(r)
+	fileData, err := parseSamlCertificateRequest(r, *c.App.Config().FileSettings.MaxFileSize)
 	if err != nil {
 		c.Err = err
 		return
 	}
 
-	if err := app.AddSamlPublicCertificate(fileData); err != nil {
+	if err := c.App.AddSamlPublicCertificate(fileData); err != nil {
 		c.Err = err
 		return
 	}
@@ -81,18 +80,18 @@ func addSamlPublicCertificate(c *Context, w http.ResponseWriter, r *http.Request
 }
 
 func addSamlPrivateCertificate(c *Context, w http.ResponseWriter, r *http.Request) {
-	if !app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
+	if !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_SYSTEM)
 		return
 	}
 
-	fileData, err := parseSamlCertificateRequest(r)
+	fileData, err := parseSamlCertificateRequest(r, *c.App.Config().FileSettings.MaxFileSize)
 	if err != nil {
 		c.Err = err
 		return
 	}
 
-	if err := app.AddSamlPrivateCertificate(fileData); err != nil {
+	if err := c.App.AddSamlPrivateCertificate(fileData); err != nil {
 		c.Err = err
 		return
 	}
@@ -100,18 +99,18 @@ func addSamlPrivateCertificate(c *Context, w http.ResponseWriter, r *http.Reques
 }
 
 func addSamlIdpCertificate(c *Context, w http.ResponseWriter, r *http.Request) {
-	if !app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
+	if !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_SYSTEM)
 		return
 	}
 
-	fileData, err := parseSamlCertificateRequest(r)
+	fileData, err := parseSamlCertificateRequest(r, *c.App.Config().FileSettings.MaxFileSize)
 	if err != nil {
 		c.Err = err
 		return
 	}
 
-	if err := app.AddSamlIdpCertificate(fileData); err != nil {
+	if err := c.App.AddSamlIdpCertificate(fileData); err != nil {
 		c.Err = err
 		return
 	}
@@ -119,12 +118,12 @@ func addSamlIdpCertificate(c *Context, w http.ResponseWriter, r *http.Request) {
 }
 
 func removeSamlPublicCertificate(c *Context, w http.ResponseWriter, r *http.Request) {
-	if !app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
+	if !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_SYSTEM)
 		return
 	}
 
-	if err := app.RemoveSamlPublicCertificate(); err != nil {
+	if err := c.App.RemoveSamlPublicCertificate(); err != nil {
 		c.Err = err
 		return
 	}
@@ -133,12 +132,12 @@ func removeSamlPublicCertificate(c *Context, w http.ResponseWriter, r *http.Requ
 }
 
 func removeSamlPrivateCertificate(c *Context, w http.ResponseWriter, r *http.Request) {
-	if !app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
+	if !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_SYSTEM)
 		return
 	}
 
-	if err := app.RemoveSamlPrivateCertificate(); err != nil {
+	if err := c.App.RemoveSamlPrivateCertificate(); err != nil {
 		c.Err = err
 		return
 	}
@@ -147,12 +146,12 @@ func removeSamlPrivateCertificate(c *Context, w http.ResponseWriter, r *http.Req
 }
 
 func removeSamlIdpCertificate(c *Context, w http.ResponseWriter, r *http.Request) {
-	if !app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
+	if !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_SYSTEM)
 		return
 	}
 
-	if err := app.RemoveSamlIdpCertificate(); err != nil {
+	if err := c.App.RemoveSamlIdpCertificate(); err != nil {
 		c.Err = err
 		return
 	}
@@ -161,11 +160,11 @@ func removeSamlIdpCertificate(c *Context, w http.ResponseWriter, r *http.Request
 }
 
 func getSamlCertificateStatus(c *Context, w http.ResponseWriter, r *http.Request) {
-	if !app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
+	if !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_SYSTEM)
 		return
 	}
 
-	status := app.GetSamlCertificateStatus()
+	status := c.App.GetSamlCertificateStatus()
 	w.Write([]byte(status.ToJson()))
 }

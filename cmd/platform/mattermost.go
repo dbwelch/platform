@@ -8,24 +8,19 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/mattermost/platform/app"
 	"github.com/spf13/cobra"
 
 	// Plugins
-	_ "github.com/mattermost/platform/model/gitlab"
+	_ "github.com/mattermost/mattermost-server/model/gitlab"
 
 	// Enterprise Imports
-	_ "github.com/mattermost/platform/imports"
+	_ "github.com/mattermost/mattermost-server/imports"
 
 	// Enterprise Deps
 	_ "github.com/dgryski/dgoogauth"
 	_ "github.com/go-ldap/ldap"
-	_ "github.com/mattermost/rsc/qr"
-
-	// Tmp deps for adding
-	_ "github.com/dimchansky/utfbom"
 	_ "github.com/hashicorp/memberlist"
-	_ "gopkg.in/gomail.v2"
+	_ "github.com/mattermost/rsc/qr"
 	_ "gopkg.in/olivere/elastic.v5"
 )
 
@@ -41,7 +36,7 @@ func init() {
 
 	resetCmd.Flags().Bool("confirm", false, "Confirm you really want to delete everything and a DB backup has been performed.")
 
-	rootCmd.AddCommand(serverCmd, versionCmd, userCmd, teamCmd, licenseCmd, importCmd, resetCmd, channelCmd, rolesCmd, testCmd, ldapCmd, configCmd, jobserverCmd)
+	rootCmd.AddCommand(serverCmd, versionCmd, userCmd, teamCmd, licenseCmd, importCmd, resetCmd, channelCmd, rolesCmd, testCmd, ldapCmd, configCmd, jobserverCmd, commandCmd, messageExportCmd)
 }
 
 var rootCmd = &cobra.Command{
@@ -59,7 +54,8 @@ var resetCmd = &cobra.Command{
 }
 
 func resetCmdF(cmd *cobra.Command, args []string) error {
-	if err := initDBCommandContextCobra(cmd); err != nil {
+	a, err := initDBCommandContextCobra(cmd)
+	if err != nil {
 		return err
 	}
 
@@ -79,7 +75,7 @@ func resetCmdF(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	app.Srv.Store.DropAllTables()
+	a.Srv.Store.DropAllTables()
 	CommandPrettyPrintln("Database sucessfully reset")
 
 	return nil

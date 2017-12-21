@@ -8,17 +8,15 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/mattermost/platform/model"
+	"github.com/mattermost/mattermost-server/model"
 )
 
-type OriginCheckerProc func(*http.Request) bool
-
-func OriginChecker(r *http.Request) bool {
+func CheckOrigin(r *http.Request, allowedOrigins string) bool {
 	origin := r.Header.Get("Origin")
-	if *Cfg.ServiceSettings.AllowCorsFrom == "*" {
+	if allowedOrigins == "*" {
 		return true
 	}
-	for _, allowed := range strings.Split(*Cfg.ServiceSettings.AllowCorsFrom, " ") {
+	for _, allowed := range strings.Split(allowedOrigins, " ") {
 		if allowed == origin {
 			return true
 		}
@@ -26,22 +24,15 @@ func OriginChecker(r *http.Request) bool {
 	return false
 }
 
-func GetOriginChecker(r *http.Request) OriginCheckerProc {
-	if len(*Cfg.ServiceSettings.AllowCorsFrom) > 0 {
-		return OriginChecker
+func OriginChecker(allowedOrigins string) func(*http.Request) bool {
+	return func(r *http.Request) bool {
+		return CheckOrigin(r, allowedOrigins)
 	}
-
-	return nil
 }
 
 func RenderWebError(err *model.AppError, w http.ResponseWriter, r *http.Request) {
-	T, _ := GetTranslationsAndLocale(w, r)
-
-	title := T("api.templates.error.title", map[string]interface{}{"SiteName": ClientCfg["SiteName"]})
 	message := err.Message
 	details := err.DetailedError
-	link := "/"
-	linkMessage := T("api.templates.error.link")
 
 	status := http.StatusTemporaryRedirect
 	if err.StatusCode != http.StatusInternalServerError {
@@ -51,10 +42,7 @@ func RenderWebError(err *model.AppError, w http.ResponseWriter, r *http.Request)
 	http.Redirect(
 		w,
 		r,
-		"/error?title="+url.QueryEscape(title)+
-			"&message="+url.QueryEscape(message)+
-			"&details="+url.QueryEscape(details)+
-			"&link="+url.QueryEscape(link)+
-			"&linkmessage="+url.QueryEscape(linkMessage),
+		"/error?message="+url.QueryEscape(message)+
+			"&details="+url.QueryEscape(details),
 		status)
 }

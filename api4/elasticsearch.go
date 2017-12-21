@@ -7,30 +7,29 @@ import (
 	"net/http"
 
 	l4g "github.com/alecthomas/log4go"
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
-func InitElasticsearch() {
+func (api *API) InitElasticsearch() {
 	l4g.Debug(utils.T("api.elasticsearch.init.debug"))
 
-	BaseRoutes.Elasticsearch.Handle("/test", ApiSessionRequired(testElasticsearch)).Methods("POST")
-	BaseRoutes.Elasticsearch.Handle("/purge_indexes", ApiSessionRequired(purgeElasticsearchIndexes)).Methods("POST")
+	api.BaseRoutes.Elasticsearch.Handle("/test", api.ApiSessionRequired(testElasticsearch)).Methods("POST")
+	api.BaseRoutes.Elasticsearch.Handle("/purge_indexes", api.ApiSessionRequired(purgeElasticsearchIndexes)).Methods("POST")
 }
 
 func testElasticsearch(c *Context, w http.ResponseWriter, r *http.Request) {
 	cfg := model.ConfigFromJson(r.Body)
 	if cfg == nil {
-		cfg = utils.Cfg
+		cfg = c.App.Config()
 	}
 
-	if !app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
+	if !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_SYSTEM)
 		return
 	}
 
-	if err := app.TestElasticsearch(cfg); err != nil {
+	if err := c.App.TestElasticsearch(cfg); err != nil {
 		c.Err = err
 		return
 	}
@@ -39,12 +38,12 @@ func testElasticsearch(c *Context, w http.ResponseWriter, r *http.Request) {
 }
 
 func purgeElasticsearchIndexes(c *Context, w http.ResponseWriter, r *http.Request) {
-	if !app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
+	if !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_SYSTEM)
 		return
 	}
 
-	if err := app.PurgeElasticsearchIndexes(); err != nil {
+	if err := c.App.PurgeElasticsearchIndexes(); err != nil {
 		c.Err = err
 		return
 	}

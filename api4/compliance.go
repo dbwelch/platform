@@ -8,19 +8,18 @@ import (
 	"strconv"
 
 	l4g "github.com/alecthomas/log4go"
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 	"github.com/mssola/user_agent"
 )
 
-func InitCompliance() {
+func (api *API) InitCompliance() {
 	l4g.Debug(utils.T("api.compliance.init.debug"))
 
-	BaseRoutes.Compliance.Handle("/reports", ApiSessionRequired(createComplianceReport)).Methods("POST")
-	BaseRoutes.Compliance.Handle("/reports", ApiSessionRequired(getComplianceReports)).Methods("GET")
-	BaseRoutes.Compliance.Handle("/reports/{report_id:[A-Za-z0-9]+}", ApiSessionRequired(getComplianceReport)).Methods("GET")
-	BaseRoutes.Compliance.Handle("/reports/{report_id:[A-Za-z0-9]+}/download", ApiSessionRequiredTrustRequester(downloadComplianceReport)).Methods("GET")
+	api.BaseRoutes.Compliance.Handle("/reports", api.ApiSessionRequired(createComplianceReport)).Methods("POST")
+	api.BaseRoutes.Compliance.Handle("/reports", api.ApiSessionRequired(getComplianceReports)).Methods("GET")
+	api.BaseRoutes.Compliance.Handle("/reports/{report_id:[A-Za-z0-9]+}", api.ApiSessionRequired(getComplianceReport)).Methods("GET")
+	api.BaseRoutes.Compliance.Handle("/reports/{report_id:[A-Za-z0-9]+}/download", api.ApiSessionRequiredTrustRequester(downloadComplianceReport)).Methods("GET")
 }
 
 func createComplianceReport(c *Context, w http.ResponseWriter, r *http.Request) {
@@ -30,14 +29,14 @@ func createComplianceReport(c *Context, w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if !app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
+	if !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_SYSTEM)
 		return
 	}
 
 	job.UserId = c.Session.UserId
 
-	rjob, err := app.SaveComplianceReport(job)
+	rjob, err := c.App.SaveComplianceReport(job)
 	if err != nil {
 		c.Err = err
 		return
@@ -49,12 +48,12 @@ func createComplianceReport(c *Context, w http.ResponseWriter, r *http.Request) 
 }
 
 func getComplianceReports(c *Context, w http.ResponseWriter, r *http.Request) {
-	if !app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
+	if !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_SYSTEM)
 		return
 	}
 
-	crs, err := app.GetComplianceReports(c.Params.Page, c.Params.PerPage)
+	crs, err := c.App.GetComplianceReports(c.Params.Page, c.Params.PerPage)
 	if err != nil {
 		c.Err = err
 		return
@@ -69,12 +68,12 @@ func getComplianceReport(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
+	if !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_SYSTEM)
 		return
 	}
 
-	job, err := app.GetComplianceReport(c.Params.ReportId)
+	job, err := c.App.GetComplianceReport(c.Params.ReportId)
 	if err != nil {
 		c.Err = err
 		return
@@ -89,18 +88,18 @@ func downloadComplianceReport(c *Context, w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if !app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
+	if !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_SYSTEM)
 		return
 	}
 
-	job, err := app.GetComplianceReport(c.Params.ReportId)
+	job, err := c.App.GetComplianceReport(c.Params.ReportId)
 	if err != nil {
 		c.Err = err
 		return
 	}
 
-	reportBytes, err := app.GetComplianceFile(job)
+	reportBytes, err := c.App.GetComplianceFile(job)
 	if err != nil {
 		c.Err = err
 		return

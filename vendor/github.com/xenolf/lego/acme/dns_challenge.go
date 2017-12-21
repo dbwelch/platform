@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
-	"golang.org/x/net/publicsuffix"
 )
 
 type preCheckDNSFunc func(fqdn, value string) (bool, error)
@@ -194,7 +193,7 @@ func dnsQuery(fqdn string, rtype uint16, nameservers []string, recursive bool) (
 
 		if err == dns.ErrTruncated {
 			tcp := &dns.Client{Net: "tcp", Timeout: DNSTimeout}
-			// If the TCP request suceeds, the err will reset to nil
+			// If the TCP request succeeds, the err will reset to nil
 			in, _, err = tcp.Exchange(m, ns)
 		}
 
@@ -242,10 +241,6 @@ func FindZoneByFqdn(fqdn string, nameservers []string) (string, error) {
 	labelIndexes := dns.Split(fqdn)
 	for _, index := range labelIndexes {
 		domain := fqdn[index:]
-		// Give up if we have reached the TLD
-		if isTLD(domain) {
-			break
-		}
 
 		in, err := dnsQuery(domain, dns.TypeSOA, nameservers, true)
 		if err != nil {
@@ -271,14 +266,6 @@ func FindZoneByFqdn(fqdn string, nameservers []string) (string, error) {
 	}
 
 	return "", fmt.Errorf("Could not find the start of authority")
-}
-
-func isTLD(domain string) bool {
-	publicsuffix, _ := publicsuffix.PublicSuffix(UnFqdn(domain))
-	if publicsuffix == UnFqdn(domain) {
-		return true
-	}
-	return false
 }
 
 // ClearFqdnCache clears the cache of fqdn to zone mappings. Primarily used in testing.

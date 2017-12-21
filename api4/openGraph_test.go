@@ -9,20 +9,28 @@ import (
 	"net/http/httptest"
 	"strings"
 
+	"github.com/mattermost/mattermost-server/model"
 	"testing"
-
-	"github.com/mattermost/platform/utils"
 )
 
 func TestGetOpenGraphMetadata(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
+
 	Client := th.Client
 
-	enableLinkPreviews := *utils.Cfg.ServiceSettings.EnableLinkPreviews
+	enableLinkPreviews := *th.App.Config().ServiceSettings.EnableLinkPreviews
+	allowedInternalConnections := *th.App.Config().ServiceSettings.AllowedUntrustedInternalConnections
 	defer func() {
-		*utils.Cfg.ServiceSettings.EnableLinkPreviews = enableLinkPreviews
+		th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableLinkPreviews = enableLinkPreviews })
+		th.App.UpdateConfig(func(cfg *model.Config) {
+			cfg.ServiceSettings.AllowedUntrustedInternalConnections = &allowedInternalConnections
+		})
 	}()
-	*utils.Cfg.ServiceSettings.EnableLinkPreviews = true
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableLinkPreviews = true })
+	th.App.UpdateConfig(func(cfg *model.Config) {
+		*cfg.ServiceSettings.AllowedUntrustedInternalConnections = "localhost 127.0.0.1"
+	})
 
 	ogDataCacheMissCount := 0
 
@@ -67,7 +75,7 @@ func TestGetOpenGraphMetadata(t *testing.T) {
 		}
 	}
 
-	*utils.Cfg.ServiceSettings.EnableLinkPreviews = false
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableLinkPreviews = false })
 	_, resp := Client.OpenGraph(ts.URL + "/og-data/")
 	CheckNotImplementedStatus(t, resp)
 }

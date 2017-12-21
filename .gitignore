@@ -9,6 +9,7 @@ npm-debug.log
 webapp/yarn-error.log
 mattermost.mattermost-license
 config/mattermost.mattermost-license
+config/config.json
 
 web/static/js/bundle*.js
 web/static/js/bundle*.js.map
@@ -16,6 +17,7 @@ web/static/js/libs*.js
 
 config/active.dat
 config/config.json
+/plugins
 
 # Enteprise imports file
 imports/imports.go
@@ -52,6 +54,7 @@ _testmain.go
 
 # Log files
 *mattermost.log
+*mattermost.log.jsonl
 *npm-debug.log*
 
 .tmp
@@ -63,6 +66,9 @@ _testmain.go
 Session.vim
 .netrwhist
 *~
+
+# Gogland project files
+mattermost-server.iml
 
 # Build files
 *bundle.js
@@ -77,11 +83,13 @@ data/*
 webapp/data/*
 api/data/*
 api4/data/*
+app/data/*
 
 enterprise
 
 cover.out
 ecover.out
+cprofile.out
 *.test
 webapp/coverage
 
@@ -91,3 +99,4 @@ tags
 .idea
 
 debug
+client

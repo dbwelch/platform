@@ -14,23 +14,21 @@ import (
 	_ "image/gif"
 	"image/jpeg"
 	"io"
-	"io/ioutil"
 	"mime/multipart"
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	l4g "github.com/alecthomas/log4go"
 	"github.com/disintegration/imaging"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
-	s3 "github.com/minio/minio-go"
-	"github.com/minio/minio-go/pkg/credentials"
 	"github.com/rwcarlsen/goexif/exif"
 	_ "golang.org/x/image/bmp"
+
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
 const (
@@ -59,167 +57,43 @@ const (
 	IMAGE_PREVIEW_PIXEL_WIDTH    = 1024
 )
 
-// Similar to s3.New() but allows initialization of signature v2 or signature v4 client.
-// If signV2 input is false, function always returns signature v4.
-//
-// Additionally this function also takes a user defined region, if set
-// disables automatic region lookup.
-func s3New(endpoint, accessKey, secretKey string, secure bool, signV2 bool, region string) (*s3.Client, error) {
-	var creds *credentials.Credentials
-	if signV2 {
-		creds = credentials.NewStatic(accessKey, secretKey, "", credentials.SignatureV2)
-	} else {
-		creds = credentials.NewStatic(accessKey, secretKey, "", credentials.SignatureV4)
-	}
-	return s3.NewWithCredentials(endpoint, creds, secure, region)
+func (a *App) FileBackend() (utils.FileBackend, *model.AppError) {
+	return utils.NewFileBackend(&a.Config().FileSettings)
 }
 
-func ReadFile(path string) ([]byte, *model.AppError) {
-	if utils.Cfg.FileSettings.DriverName == model.IMAGE_DRIVER_S3 {
-		endpoint := utils.Cfg.FileSettings.AmazonS3Endpoint
-		accessKey := utils.Cfg.FileSettings.AmazonS3AccessKeyId
-		secretKey := utils.Cfg.FileSettings.AmazonS3SecretAccessKey
-		secure := *utils.Cfg.FileSettings.AmazonS3SSL
-		signV2 := *utils.Cfg.FileSettings.AmazonS3SignV2
-		region := utils.Cfg.FileSettings.AmazonS3Region
-		s3Clnt, err := s3New(endpoint, accessKey, secretKey, secure, signV2, region)
-		if err != nil {
-			return nil, model.NewLocAppError("ReadFile", "api.file.read_file.s3.app_error", nil, err.Error())
-		}
-		bucket := utils.Cfg.FileSettings.AmazonS3Bucket
-		minioObject, err := s3Clnt.GetObject(bucket, path)
-		defer minioObject.Close()
-		if err != nil {
-			return nil, model.NewLocAppError("ReadFile", "api.file.read_file.s3.app_error", nil, err.Error())
-		}
-		if f, err := ioutil.ReadAll(minioObject); err != nil {
-			return nil, model.NewLocAppError("ReadFile", "api.file.read_file.s3.app_error", nil, err.Error())
-		} else {
-			return f, nil
-		}
-	} else if utils.Cfg.FileSettings.DriverName == model.IMAGE_DRIVER_LOCAL {
-		if f, err := ioutil.ReadFile(utils.Cfg.FileSettings.Directory + path); err != nil {
-			return nil, model.NewLocAppError("ReadFile", "api.file.read_file.reading_local.app_error", nil, err.Error())
-		} else {
-			return f, nil
-		}
-	} else {
-		return nil, model.NewAppError("ReadFile", "api.file.read_file.configured.app_error", nil, "", http.StatusNotImplemented)
+func (a *App) ReadFile(path string) ([]byte, *model.AppError) {
+	backend, err := a.FileBackend()
+	if err != nil {
+		return nil, err
 	}
+	return backend.ReadFile(path)
 }
 
-func MoveFile(oldPath, newPath string) *model.AppError {
-	if utils.Cfg.FileSettings.DriverName == model.IMAGE_DRIVER_S3 {
-		endpoint := utils.Cfg.FileSettings.AmazonS3Endpoint
-		accessKey := utils.Cfg.FileSettings.AmazonS3AccessKeyId
-		secretKey := utils.Cfg.FileSettings.AmazonS3SecretAccessKey
-		secure := *utils.Cfg.FileSettings.AmazonS3SSL
-		signV2 := *utils.Cfg.FileSettings.AmazonS3SignV2
-		region := utils.Cfg.FileSettings.AmazonS3Region
-		s3Clnt, err := s3New(endpoint, accessKey, secretKey, secure, signV2, region)
-		if err != nil {
-			return model.NewLocAppError("moveFile", "api.file.write_file.s3.app_error", nil, err.Error())
-		}
-		bucket := utils.Cfg.FileSettings.AmazonS3Bucket
-
-		source := s3.NewSourceInfo(bucket, oldPath, nil)
-		destination, err := s3.NewDestinationInfo(bucket, newPath, nil, nil)
-		if err != nil {
-			return model.NewLocAppError("moveFile", "api.file.write_file.s3.app_error", nil, err.Error())
-		}
-		if err = s3Clnt.CopyObject(destination, source); err != nil {
-			return model.NewLocAppError("moveFile", "api.file.move_file.delete_from_s3.app_error", nil, err.Error())
-		}
-		if err = s3Clnt.RemoveObject(bucket, oldPath); err != nil {
-			return model.NewLocAppError("moveFile", "api.file.move_file.delete_from_s3.app_error", nil, err.Error())
-		}
-	} else if utils.Cfg.FileSettings.DriverName == model.IMAGE_DRIVER_LOCAL {
-		if err := os.MkdirAll(filepath.Dir(utils.Cfg.FileSettings.Directory+newPath), 0774); err != nil {
-			return model.NewLocAppError("moveFile", "api.file.move_file.rename.app_error", nil, err.Error())
-		}
-
-		if err := os.Rename(utils.Cfg.FileSettings.Directory+oldPath, utils.Cfg.FileSettings.Directory+newPath); err != nil {
-			return model.NewLocAppError("moveFile", "api.file.move_file.rename.app_error", nil, err.Error())
-		}
-	} else {
-		return model.NewLocAppError("moveFile", "api.file.move_file.configured.app_error", nil, "")
+func (a *App) MoveFile(oldPath, newPath string) *model.AppError {
+	backend, err := a.FileBackend()
+	if err != nil {
+		return err
 	}
-
-	return nil
+	return backend.MoveFile(oldPath, newPath)
 }
 
-func WriteFile(f []byte, path string) *model.AppError {
-	if utils.Cfg.FileSettings.DriverName == model.IMAGE_DRIVER_S3 {
-		endpoint := utils.Cfg.FileSettings.AmazonS3Endpoint
-		accessKey := utils.Cfg.FileSettings.AmazonS3AccessKeyId
-		secretKey := utils.Cfg.FileSettings.AmazonS3SecretAccessKey
-		secure := *utils.Cfg.FileSettings.AmazonS3SSL
-		signV2 := *utils.Cfg.FileSettings.AmazonS3SignV2
-		region := utils.Cfg.FileSettings.AmazonS3Region
-		s3Clnt, err := s3New(endpoint, accessKey, secretKey, secure, signV2, region)
-		if err != nil {
-			return model.NewLocAppError("WriteFile", "api.file.write_file.s3.app_error", nil, err.Error())
-		}
-
-		bucket := utils.Cfg.FileSettings.AmazonS3Bucket
-		ext := filepath.Ext(path)
-
-		if model.IsFileExtImage(ext) {
-			_, err = s3Clnt.PutObject(bucket, path, bytes.NewReader(f), model.GetImageMimeType(ext))
-		} else {
-			_, err = s3Clnt.PutObject(bucket, path, bytes.NewReader(f), "binary/octet-stream")
-		}
-		if err != nil {
-			return model.NewLocAppError("WriteFile", "api.file.write_file.s3.app_error", nil, err.Error())
-		}
-	} else if utils.Cfg.FileSettings.DriverName == model.IMAGE_DRIVER_LOCAL {
-		if err := writeFileLocally(f, utils.Cfg.FileSettings.Directory+path); err != nil {
-			return err
-		}
-	} else {
-		return model.NewLocAppError("WriteFile", "api.file.write_file.configured.app_error", nil, "")
+func (a *App) WriteFile(f []byte, path string) *model.AppError {
+	backend, err := a.FileBackend()
+	if err != nil {
+		return err
 	}
-
-	return nil
+	return backend.WriteFile(f, path)
 }
 
-func writeFileLocally(f []byte, path string) *model.AppError {
-	if err := os.MkdirAll(filepath.Dir(path), 0774); err != nil {
-		directory, _ := filepath.Abs(filepath.Dir(path))
-		return model.NewLocAppError("WriteFile", "api.file.write_file_locally.create_dir.app_error", nil, "directory="+directory+", err="+err.Error())
+func (a *App) RemoveFile(path string) *model.AppError {
+	backend, err := a.FileBackend()
+	if err != nil {
+		return err
 	}
-
-	if err := ioutil.WriteFile(path, f, 0644); err != nil {
-		return model.NewLocAppError("WriteFile", "api.file.write_file_locally.writing.app_error", nil, err.Error())
-	}
-
-	return nil
+	return backend.RemoveFile(path)
 }
 
-func openFileWriteStream(path string) (io.Writer, *model.AppError) {
-	if utils.Cfg.FileSettings.DriverName == model.IMAGE_DRIVER_S3 {
-		return nil, model.NewLocAppError("openFileWriteStream", "api.file.open_file_write_stream.s3.app_error", nil, "")
-	} else if utils.Cfg.FileSettings.DriverName == model.IMAGE_DRIVER_LOCAL {
-		if err := os.MkdirAll(filepath.Dir(utils.Cfg.FileSettings.Directory+path), 0774); err != nil {
-			return nil, model.NewLocAppError("openFileWriteStream", "api.file.open_file_write_stream.creating_dir.app_error", nil, err.Error())
-		}
-
-		if fileHandle, err := os.Create(utils.Cfg.FileSettings.Directory + path); err != nil {
-			return nil, model.NewLocAppError("openFileWriteStream", "api.file.open_file_write_stream.local_server.app_error", nil, err.Error())
-		} else {
-			fileHandle.Chmod(0644)
-			return fileHandle, nil
-		}
-	}
-
-	return nil, model.NewLocAppError("openFileWriteStream", "api.file.open_file_write_stream.configured.app_error", nil, "")
-}
-
-func closeFileWriteStream(file io.Writer) {
-	file.(*os.File).Close()
-}
-
-func GetInfoForFilename(post *model.Post, teamId string, filename string) *model.FileInfo {
+func (a *App) GetInfoForFilename(post *model.Post, teamId string, filename string) *model.FileInfo {
 	// Find the path from the Filename of the form /{channelId}/{userId}/{uid}/{nameWithExtension}
 	split := strings.SplitN(filename, "/", 5)
 	if len(split) < 5 {
@@ -241,7 +115,7 @@ func GetInfoForFilename(post *model.Post, teamId string, filename string) *model
 
 	// Open the file and populate the fields of the FileInfo
 	var info *model.FileInfo
-	if data, err := ReadFile(path); err != nil {
+	if data, err := a.ReadFile(path); err != nil {
 		l4g.Error(utils.T("api.file.migrate_filenames_to_file_infos.file_not_found.error"), post.Id, filename, path, err)
 		return nil
 	} else {
@@ -269,13 +143,13 @@ func GetInfoForFilename(post *model.Post, teamId string, filename string) *model
 	return info
 }
 
-func FindTeamIdForFilename(post *model.Post, filename string) string {
+func (a *App) FindTeamIdForFilename(post *model.Post, filename string) string {
 	split := strings.SplitN(filename, "/", 5)
 	id := split[3]
 	name, _ := url.QueryUnescape(split[4])
 
 	// This post is in a direct channel so we need to figure out what team the files are stored under.
-	if result := <-Srv.Store.Team().GetTeamsByUserId(post.UserId); result.Err != nil {
+	if result := <-a.Srv.Store.Team().GetTeamsByUserId(post.UserId); result.Err != nil {
 		l4g.Error(utils.T("api.file.migrate_filenames_to_file_infos.teams.app_error"), post.Id, result.Err)
 	} else if teams := result.Data.([]*model.Team); len(teams) == 1 {
 		// The user has only one team so the post must've been sent from it
@@ -283,7 +157,7 @@ func FindTeamIdForFilename(post *model.Post, filename string) string {
 	} else {
 		for _, team := range teams {
 			path := fmt.Sprintf("teams/%s/channels/%s/users/%s/%s/%s", team.Id, post.ChannelId, post.UserId, id, name)
-			if _, err := ReadFile(path); err == nil {
+			if _, err := a.ReadFile(path); err == nil {
 				// Found the team that this file was posted from
 				return team.Id
 			}
@@ -296,13 +170,13 @@ func FindTeamIdForFilename(post *model.Post, filename string) string {
 var fileMigrationLock sync.Mutex
 
 // Creates and stores FileInfos for a post created before the FileInfos table existed.
-func MigrateFilenamesToFileInfos(post *model.Post) []*model.FileInfo {
+func (a *App) MigrateFilenamesToFileInfos(post *model.Post) []*model.FileInfo {
 	if len(post.Filenames) == 0 {
 		l4g.Warn(utils.T("api.file.migrate_filenames_to_file_infos.no_filenames.warn"), post.Id)
 		return []*model.FileInfo{}
 	}
 
-	cchan := Srv.Store.Channel().Get(post.ChannelId, true)
+	cchan := a.Srv.Store.Channel().Get(post.ChannelId, true)
 
 	// There's a weird bug that rarely happens where a post ends up with duplicate Filenames so remove those
 	filenames := utils.RemoveDuplicatesFromStringArray(post.Filenames)
@@ -319,7 +193,7 @@ func MigrateFilenamesToFileInfos(post *model.Post) []*model.FileInfo {
 	var teamId string
 	if channel.TeamId == "" {
 		// This post was made in a cross-team DM channel so we need to find where its files were saved
-		teamId = FindTeamIdForFilename(post, filenames[0])
+		teamId = a.FindTeamIdForFilename(post, filenames[0])
 	} else {
 		teamId = channel.TeamId
 	}
@@ -330,7 +204,7 @@ func MigrateFilenamesToFileInfos(post *model.Post) []*model.FileInfo {
 		l4g.Error(utils.T("api.file.migrate_filenames_to_file_infos.team_id.error"), post.Id, filenames)
 	} else {
 		for _, filename := range filenames {
-			info := GetInfoForFilename(post, teamId, filename)
+			info := a.GetInfoForFilename(post, teamId, filename)
 			if info == nil {
 				continue
 			}
@@ -343,12 +217,12 @@ func MigrateFilenamesToFileInfos(post *model.Post) []*model.FileInfo {
 	fileMigrationLock.Lock()
 	defer fileMigrationLock.Unlock()
 
-	if result := <-Srv.Store.Post().Get(post.Id); result.Err != nil {
+	if result := <-a.Srv.Store.Post().Get(post.Id); result.Err != nil {
 		l4g.Error(utils.T("api.file.migrate_filenames_to_file_infos.get_post_again.app_error"), post.Id, result.Err)
 		return []*model.FileInfo{}
 	} else if newPost := result.Data.(*model.PostList).Posts[post.Id]; len(newPost.Filenames) != len(post.Filenames) {
 		// Another thread has already created FileInfos for this post, so just return those
-		if result := <-Srv.Store.FileInfo().GetForPost(post.Id, true, false); result.Err != nil {
+		if result := <-a.Srv.Store.FileInfo().GetForPost(post.Id, true, false); result.Err != nil {
 			l4g.Error(utils.T("api.file.migrate_filenames_to_file_infos.get_post_file_infos_again.app_error"), post.Id, result.Err)
 			return []*model.FileInfo{}
 		} else {
@@ -362,7 +236,7 @@ func MigrateFilenamesToFileInfos(post *model.Post) []*model.FileInfo {
 	savedInfos := make([]*model.FileInfo, 0, len(infos))
 	fileIds := make([]string, 0, len(filenames))
 	for _, info := range infos {
-		if result := <-Srv.Store.FileInfo().Save(info); result.Err != nil {
+		if result := <-a.Srv.Store.FileInfo().Save(info); result.Err != nil {
 			l4g.Error(utils.T("api.file.migrate_filenames_to_file_infos.save_file_info.app_error"), post.Id, info.Id, info.Path, result.Err)
 			continue
 		}
@@ -379,7 +253,7 @@ func MigrateFilenamesToFileInfos(post *model.Post) []*model.FileInfo {
 	newPost.FileIds = fileIds
 
 	// Update Posts to clear Filenames and set FileIds
-	if result := <-Srv.Store.Post().Update(newPost, post); result.Err != nil {
+	if result := <-a.Srv.Store.Post().Update(newPost, post); result.Err != nil {
 		l4g.Error(utils.T("api.file.migrate_filenames_to_file_infos.save_post.app_error"), post.Id, newPost.FileIds, post.Filenames, result.Err)
 		return []*model.FileInfo{}
 	} else {
@@ -387,13 +261,13 @@ func MigrateFilenamesToFileInfos(post *model.Post) []*model.FileInfo {
 	}
 }
 
-func GeneratePublicLink(siteURL string, info *model.FileInfo) string {
-	hash := GeneratePublicLinkHash(info.Id, *utils.Cfg.FileSettings.PublicLinkSalt)
+func (a *App) GeneratePublicLink(siteURL string, info *model.FileInfo) string {
+	hash := GeneratePublicLinkHash(info.Id, *a.Config().FileSettings.PublicLinkSalt)
 	return fmt.Sprintf("%s/files/%v/public?h=%s", siteURL, info.Id, hash)
 }
 
-func GeneratePublicLinkV3(siteURL string, info *model.FileInfo) string {
-	hash := GeneratePublicLinkHash(info.Id, *utils.Cfg.FileSettings.PublicLinkSalt)
+func (a *App) GeneratePublicLinkV3(siteURL string, info *model.FileInfo) string {
+	hash := GeneratePublicLinkHash(info.Id, *a.Config().FileSettings.PublicLinkSalt)
 	return fmt.Sprintf("%s%s/public/files/%v/get?h=%s", siteURL, model.API_URL_SUFFIX_V3, info.Id, hash)
 }
 
@@ -405,8 +279,8 @@ func GeneratePublicLinkHash(fileId, salt string) string {
 	return base64.RawURLEncoding.EncodeToString(hash.Sum(nil))
 }
 
-func UploadFiles(teamId string, channelId string, userId string, fileHeaders []*multipart.FileHeader, clientIds []string) (*model.FileUploadResponse, *model.AppError) {
-	if len(utils.Cfg.FileSettings.DriverName) == 0 {
+func (a *App) UploadFiles(teamId string, channelId string, userId string, fileHeaders []*multipart.FileHeader, clientIds []string) (*model.FileUploadResponse, *model.AppError) {
+	if len(*a.Config().FileSettings.DriverName) == 0 {
 		return nil, model.NewAppError("uploadFile", "api.file.upload_file.storage.app_error", nil, "", http.StatusNotImplemented)
 	}
 
@@ -421,16 +295,16 @@ func UploadFiles(teamId string, channelId string, userId string, fileHeaders []*
 
 	for i, fileHeader := range fileHeaders {
 		file, fileErr := fileHeader.Open()
-		defer file.Close()
 		if fileErr != nil {
 			return nil, model.NewAppError("UploadFiles", "api.file.upload_file.bad_parse.app_error", nil, fileErr.Error(), http.StatusBadRequest)
 		}
+		defer file.Close()
 
 		buf := bytes.NewBuffer(nil)
 		io.Copy(buf, file)
 		data := buf.Bytes()
 
-		info, err := DoUploadFile(teamId, channelId, userId, fileHeader.Filename, data)
+		info, err := a.DoUploadFile(time.Now(), teamId, channelId, userId, fileHeader.Filename, data)
 		if err != nil {
 			return nil, err
 		}
@@ -448,13 +322,16 @@ func UploadFiles(teamId string, channelId string, userId string, fileHeaders []*
 		}
 	}
 
-	HandleImages(previewPathList, thumbnailPathList, imageDataList)
+	a.HandleImages(previewPathList, thumbnailPathList, imageDataList)
 
 	return resStruct, nil
 }
 
-func DoUploadFile(teamId string, channelId string, userId string, rawFilename string, data []byte) (*model.FileInfo, *model.AppError) {
+func (a *App) DoUploadFile(now time.Time, rawTeamId string, rawChannelId string, rawUserId string, rawFilename string, data []byte) (*model.FileInfo, *model.AppError) {
 	filename := filepath.Base(rawFilename)
+	teamId := filepath.Base(rawTeamId)
+	channelId := filepath.Base(rawChannelId)
+	userId := filepath.Base(rawUserId)
 
 	info, err := model.GetInfoForBytes(filename, data)
 	if err != nil {
@@ -465,14 +342,13 @@ func DoUploadFile(teamId string, channelId string, userId string, rawFilename st
 	info.Id = model.NewId()
 	info.CreatorId = userId
 
-	pathPrefix := "teams/" + teamId + "/channels/" + channelId + "/users/" + userId + "/" + info.Id + "/"
+	pathPrefix := now.Format("20060102") + "/teams/" + teamId + "/channels/" + channelId + "/users/" + userId + "/" + info.Id + "/"
 	info.Path = pathPrefix + filename
 
 	if info.IsImage() {
 		// Check dimensions before loading the whole thing into memory later on
 		if info.Width*info.Height > MaxImageSize {
-			err := model.NewLocAppError("uploadFile", "api.file.upload_file.large_image.app_error", map[string]interface{}{"Filename": filename}, "")
-			err.StatusCode = http.StatusBadRequest
+			err := model.NewAppError("uploadFile", "api.file.upload_file.large_image.app_error", map[string]interface{}{"Filename": filename}, "", http.StatusBadRequest)
 			return nil, err
 		}
 
@@ -481,18 +357,18 @@ func DoUploadFile(teamId string, channelId string, userId string, rawFilename st
 		info.ThumbnailPath = pathPrefix + nameWithoutExtension + "_thumb.jpg"
 	}
 
-	if err := WriteFile(data, info.Path); err != nil {
+	if err := a.WriteFile(data, info.Path); err != nil {
 		return nil, err
 	}
 
-	if result := <-Srv.Store.FileInfo().Save(info); result.Err != nil {
+	if result := <-a.Srv.Store.FileInfo().Save(info); result.Err != nil {
 		return nil, result.Err
 	}
 
 	return info, nil
 }
 
-func HandleImages(previewPathList []string, thumbnailPathList []string, fileData [][]byte) {
+func (a *App) HandleImages(previewPathList []string, thumbnailPathList []string, fileData [][]byte) {
 	wg := new(sync.WaitGroup)
 
 	for i := range fileData {
@@ -501,12 +377,12 @@ func HandleImages(previewPathList []string, thumbnailPathList []string, fileData
 			wg.Add(2)
 			go func(img *image.Image, path string, width int, height int) {
 				defer wg.Done()
-				generateThumbnailImage(*img, path, width, height)
+				a.generateThumbnailImage(*img, path, width, height)
 			}(img, thumbnailPathList[i], width, height)
 
 			go func(img *image.Image, path string, width int) {
 				defer wg.Done()
-				generatePreviewImage(*img, path, width)
+				a.generatePreviewImage(*img, path, width)
 			}(img, previewPathList[i], width)
 		}
 	}
@@ -577,7 +453,7 @@ func getImageOrientation(input io.Reader) (int, error) {
 	}
 }
 
-func generateThumbnailImage(img image.Image, thumbnailPath string, width int, height int) {
+func (a *App) generateThumbnailImage(img image.Image, thumbnailPath string, width int, height int) {
 	thumbWidth := float64(IMAGE_THUMBNAIL_PIXEL_WIDTH)
 	thumbHeight := float64(IMAGE_THUMBNAIL_PIXEL_HEIGHT)
 	imgWidth := float64(width)
@@ -598,13 +474,13 @@ func generateThumbnailImage(img image.Image, thumbnailPath string, width int, he
 		return
 	}
 
-	if err := WriteFile(buf.Bytes(), thumbnailPath); err != nil {
+	if err := a.WriteFile(buf.Bytes(), thumbnailPath); err != nil {
 		l4g.Error(utils.T("api.file.handle_images_forget.upload_thumb.error"), thumbnailPath, err)
 		return
 	}
 }
 
-func generatePreviewImage(img image.Image, previewPath string, width int) {
+func (a *App) generatePreviewImage(img image.Image, previewPath string, width int) {
 	var preview image.Image
 
 	if width > IMAGE_PREVIEW_PIXEL_WIDTH {
@@ -620,14 +496,14 @@ func generatePreviewImage(img image.Image, previewPath string, width int) {
 		return
 	}
 
-	if err := WriteFile(buf.Bytes(), previewPath); err != nil {
+	if err := a.WriteFile(buf.Bytes(), previewPath); err != nil {
 		l4g.Error(utils.T("api.file.handle_images_forget.upload_preview.error"), previewPath, err)
 		return
 	}
 }
 
-func GetFileInfo(fileId string) (*model.FileInfo, *model.AppError) {
-	if result := <-Srv.Store.FileInfo().Get(fileId); result.Err != nil {
+func (a *App) GetFileInfo(fileId string) (*model.FileInfo, *model.AppError) {
+	if result := <-a.Srv.Store.FileInfo().Get(fileId); result.Err != nil {
 		return nil, result.Err
 	} else {
 		return result.Data.(*model.FileInfo), nil

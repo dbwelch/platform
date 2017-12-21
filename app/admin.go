@@ -4,43 +4,40 @@
 package app
 
 import (
-	"bufio"
+	"io"
 	"os"
 	"strings"
 	"time"
 
 	"runtime/debug"
 
+	"net/http"
+
 	l4g "github.com/alecthomas/log4go"
-	"github.com/mattermost/platform/einterfaces"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/store"
-	"github.com/mattermost/platform/utils"
-	"github.com/mattermost/platform/jobs"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/store/sqlstore"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
-func GetLogs(page, perPage int) ([]string, *model.AppError) {
-
-	perPage = 10000
-
+func (a *App) GetLogs(page, perPage int) ([]string, *model.AppError) {
 	var lines []string
-	if einterfaces.GetClusterInterface() != nil && *utils.Cfg.ClusterSettings.Enable {
+	if a.Cluster != nil && *a.Config().ClusterSettings.Enable {
 		lines = append(lines, "-----------------------------------------------------------------------------------------------------------")
 		lines = append(lines, "-----------------------------------------------------------------------------------------------------------")
-		lines = append(lines, einterfaces.GetClusterInterface().GetClusterId())
+		lines = append(lines, a.Cluster.GetMyClusterInfo().Hostname)
 		lines = append(lines, "-----------------------------------------------------------------------------------------------------------")
 		lines = append(lines, "-----------------------------------------------------------------------------------------------------------")
 	}
 
-	melines, err := GetLogsSkipSend(page, perPage)
+	melines, err := a.GetLogsSkipSend(page, perPage)
 	if err != nil {
 		return nil, err
 	}
 
 	lines = append(lines, melines...)
 
-	if einterfaces.GetClusterInterface() != nil && *utils.Cfg.ClusterSettings.Enable {
-		clines, err := einterfaces.GetClusterInterface().GetLogs(page, perPage)
+	if a.Cluster != nil && *a.Config().ClusterSettings.Enable {
+		clines, err := a.Cluster.GetLogs(page, perPage)
 		if err != nil {
 			return nil, err
 		}
@@ -51,31 +48,59 @@ func GetLogs(page, perPage int) ([]string, *model.AppError) {
 	return lines, nil
 }
 
-func GetLogsSkipSend(page, perPage int) ([]string, *model.AppError) {
+func (a *App) GetLogsSkipSend(page, perPage int) ([]string, *model.AppError) {
 	var lines []string
 
-	if utils.Cfg.LogSettings.EnableFile {
-		file, err := os.Open(utils.GetLogFileLocation(utils.Cfg.LogSettings.FileLocation))
+	if a.Config().LogSettings.EnableFile {
+		file, err := os.Open(utils.GetLogFileLocation(a.Config().LogSettings.FileLocation))
 		if err != nil {
-			return nil, model.NewLocAppError("getLogs", "api.admin.file_read_error", nil, err.Error())
+			return nil, model.NewAppError("getLogs", "api.admin.file_read_error", nil, err.Error(), http.StatusInternalServerError)
 		}
 
 		defer file.Close()
 
-		offsetCount := 0
-		limitCount := 0
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			if limitCount >= perPage {
-				break
+		var newLine = []byte{'\n'}
+		var lineCount int
+		const searchPos = -1
+		lineEndPos, err := file.Seek(0, io.SeekEnd)
+		if err != nil {
+			return nil, model.NewAppError("getLogs", "api.admin.file_read_error", nil, err.Error(), http.StatusInternalServerError)
+		}
+		for {
+			pos, err := file.Seek(searchPos, io.SeekCurrent)
+			if err != nil {
+				return nil, model.NewAppError("getLogs", "api.admin.file_read_error", nil, err.Error(), http.StatusInternalServerError)
 			}
 
-			if offsetCount >= page*perPage {
-				lines = append(lines, scanner.Text())
-				limitCount++
-			} else {
-				offsetCount++
+			b := make([]byte, 1)
+			_, err = file.ReadAt(b, pos)
+			if err != nil {
+				return nil, model.NewAppError("getLogs", "api.admin.file_read_error", nil, err.Error(), http.StatusInternalServerError)
 			}
+
+			if b[0] == newLine[0] || pos == 0 {
+				lineCount++
+				if lineCount > page*perPage {
+					line := make([]byte, lineEndPos-pos)
+					_, err := file.ReadAt(line, pos)
+					if err != nil {
+						return nil, model.NewAppError("getLogs", "api.admin.file_read_error", nil, err.Error(), http.StatusInternalServerError)
+					}
+					lines = append(lines, string(line))
+				}
+				if pos == 0 {
+					break
+				}
+				lineEndPos = pos
+			}
+
+			if len(lines) == perPage {
+				break
+			}
+		}
+
+		for i, j := 0, len(lines)-1; i < j; i, j = i+1, j-1 {
+			lines[i], lines[j] = lines[j], lines[i]
 		}
 	} else {
 		lines = append(lines, "")
@@ -84,21 +109,21 @@ func GetLogsSkipSend(page, perPage int) ([]string, *model.AppError) {
 	return lines, nil
 }
 
-func GetClusterStatus() []*model.ClusterInfo {
+func (a *App) GetClusterStatus() []*model.ClusterInfo {
 	infos := make([]*model.ClusterInfo, 0)
 
-	if einterfaces.GetClusterInterface() != nil {
-		infos = einterfaces.GetClusterInterface().GetClusterInfos()
+	if a.Cluster != nil {
+		infos = a.Cluster.GetClusterInfos()
 	}
 
 	return infos
 }
 
-func InvalidateAllCaches() *model.AppError {
+func (a *App) InvalidateAllCaches() *model.AppError {
 	debug.FreeOSMemory()
-	InvalidateAllCachesSkipSend()
+	a.InvalidateAllCachesSkipSend()
 
-	if einterfaces.GetClusterInterface() != nil {
+	if a.Cluster != nil {
 
 		msg := &model.ClusterMessage{
 			Event:            model.CLUSTER_EVENT_INVALIDATE_ALL_CACHES,
@@ -106,41 +131,33 @@ func InvalidateAllCaches() *model.AppError {
 			WaitForAllToSend: true,
 		}
 
-		einterfaces.GetClusterInterface().SendClusterMessage(msg)
+		a.Cluster.SendClusterMessage(msg)
 	}
 
 	return nil
 }
 
-func InvalidateAllCachesSkipSend() {
+func (a *App) InvalidateAllCachesSkipSend() {
 	l4g.Info(utils.T("api.context.invalidate_all_caches"))
-	sessionCache.Purge()
+	a.sessionCache.Purge()
 	ClearStatusCache()
-	store.ClearChannelCaches()
-	store.ClearUserCaches()
-	store.ClearPostCaches()
-	store.ClearWebhookCaches()
-	LoadLicense()
+	sqlstore.ClearChannelCaches()
+	sqlstore.ClearUserCaches()
+	sqlstore.ClearPostCaches()
+	sqlstore.ClearWebhookCaches()
+	a.LoadLicense()
 }
 
-func GetConfig() *model.Config {
-	json := utils.Cfg.ToJson()
+func (a *App) GetConfig() *model.Config {
+	json := a.Config().ToJson()
 	cfg := model.ConfigFromJson(strings.NewReader(json))
 	cfg.Sanitize()
 
 	return cfg
 }
 
-func ReloadConfig() {
-	debug.FreeOSMemory()
-	utils.LoadConfig(utils.CfgFileName)
-
-	// start/restart email batching job if necessary
-	InitEmailBatching()
-}
-
-func SaveConfig(cfg *model.Config, sendConfigChangeClusterMessage bool) *model.AppError {
-	oldCfg := utils.Cfg
+func (a *App) SaveConfig(cfg *model.Config, sendConfigChangeClusterMessage bool) *model.AppError {
+	oldCfg := a.Config()
 	cfg.SetDefaults()
 	utils.Desanitize(cfg)
 
@@ -148,72 +165,75 @@ func SaveConfig(cfg *model.Config, sendConfigChangeClusterMessage bool) *model.A
 		return err
 	}
 
-	if err := utils.ValidateLdapFilter(cfg); err != nil {
+	if err := utils.ValidateLdapFilter(cfg, a.Ldap); err != nil {
 		return err
 	}
 
-	if *utils.Cfg.ClusterSettings.Enable && *utils.Cfg.ClusterSettings.ReadOnlyConfig {
-		return model.NewLocAppError("saveConfig", "ent.cluster.save_config.error", nil, "")
+	if *a.Config().ClusterSettings.Enable && *a.Config().ClusterSettings.ReadOnlyConfig {
+		return model.NewAppError("saveConfig", "ent.cluster.save_config.error", nil, "", http.StatusForbidden)
 	}
 
 	utils.DisableConfigWatch()
-	utils.SaveConfig(utils.CfgFileName, cfg)
-	utils.LoadConfig(utils.CfgFileName)
+	a.UpdateConfig(func(update *model.Config) {
+		*update = *cfg
+	})
+	a.PersistConfig()
+	a.ReloadConfig()
 	utils.EnableConfigWatch()
 
-	if einterfaces.GetMetricsInterface() != nil {
-		if *utils.Cfg.MetricsSettings.Enable {
-			einterfaces.GetMetricsInterface().StartServer()
+	if a.Metrics != nil {
+		if *a.Config().MetricsSettings.Enable {
+			a.Metrics.StartServer()
 		} else {
-			einterfaces.GetMetricsInterface().StopServer()
+			a.Metrics.StopServer()
 		}
 	}
 
-	if einterfaces.GetClusterInterface() != nil {
-		err := einterfaces.GetClusterInterface().ConfigChanged(cfg, oldCfg, sendConfigChangeClusterMessage)
+	if a.Cluster != nil {
+		err := a.Cluster.ConfigChanged(cfg, oldCfg, sendConfigChangeClusterMessage)
 		if err != nil {
 			return err
 		}
 	}
 
 	// start/restart email batching job if necessary
-	InitEmailBatching()
+	a.InitEmailBatching()
 
 	return nil
 }
 
-func RecycleDatabaseConnection() {
-	oldStore := Srv.Store
+func (a *App) RecycleDatabaseConnection() {
+	oldStore := a.Srv.Store
 
 	l4g.Warn(utils.T("api.admin.recycle_db_start.warn"))
-	Srv.Store = store.NewLayeredStore()
+	a.Srv.Store = a.newStore()
+	a.Jobs.Store = a.Srv.Store
 
-	jobs.Srv.Store = Srv.Store
-
-	time.Sleep(20 * time.Second)
-	oldStore.Close()
+	if a.Srv.Store != oldStore {
+		time.Sleep(20 * time.Second)
+		oldStore.Close()
+	}
 
 	l4g.Warn(utils.T("api.admin.recycle_db_end.warn"))
 }
 
-func TestEmail(userId string, cfg *model.Config) *model.AppError {
+func (a *App) TestEmail(userId string, cfg *model.Config) *model.AppError {
 	if len(cfg.EmailSettings.SMTPServer) == 0 {
-		return model.NewLocAppError("testEmail", "api.admin.test_email.missing_server", nil, utils.T("api.context.invalid_param.app_error", map[string]interface{}{"Name": "SMTPServer"}))
+		return model.NewAppError("testEmail", "api.admin.test_email.missing_server", nil, utils.T("api.context.invalid_param.app_error", map[string]interface{}{"Name": "SMTPServer"}), http.StatusBadRequest)
 	}
 
 	// if the user hasn't changed their email settings, fill in the actual SMTP password so that
 	// the user can verify an existing SMTP connection
 	if cfg.EmailSettings.SMTPPassword == model.FAKE_SETTING {
-		if cfg.EmailSettings.SMTPServer == utils.Cfg.EmailSettings.SMTPServer &&
-			cfg.EmailSettings.SMTPPort == utils.Cfg.EmailSettings.SMTPPort &&
-			cfg.EmailSettings.SMTPUsername == utils.Cfg.EmailSettings.SMTPUsername {
-			cfg.EmailSettings.SMTPPassword = utils.Cfg.EmailSettings.SMTPPassword
+		if cfg.EmailSettings.SMTPServer == a.Config().EmailSettings.SMTPServer &&
+			cfg.EmailSettings.SMTPPort == a.Config().EmailSettings.SMTPPort &&
+			cfg.EmailSettings.SMTPUsername == a.Config().EmailSettings.SMTPUsername {
+			cfg.EmailSettings.SMTPPassword = a.Config().EmailSettings.SMTPPassword
 		} else {
-			return model.NewLocAppError("testEmail", "api.admin.test_email.reenter_password", nil, "")
+			return model.NewAppError("testEmail", "api.admin.test_email.reenter_password", nil, "", http.StatusBadRequest)
 		}
 	}
-
-	if user, err := GetUser(userId); err != nil {
+	if user, err := a.GetUser(userId); err != nil {
 		return err
 	} else {
 		T := utils.GetUserTranslations(user.Locale)

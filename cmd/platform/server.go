@@ -10,16 +10,14 @@ import (
 	"time"
 
 	l4g "github.com/alecthomas/log4go"
-	"github.com/mattermost/platform/api"
-	"github.com/mattermost/platform/api4"
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/einterfaces"
-	"github.com/mattermost/platform/jobs"
-	"github.com/mattermost/platform/manualtesting"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
-	"github.com/mattermost/platform/web"
-	"github.com/mattermost/platform/wsapi"
+	"github.com/mattermost/mattermost-server/api"
+	"github.com/mattermost/mattermost-server/api4"
+	"github.com/mattermost/mattermost-server/app"
+	"github.com/mattermost/mattermost-server/manualtesting"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
+	"github.com/mattermost/mattermost-server/web"
+	"github.com/mattermost/mattermost-server/wsapi"
 	"github.com/spf13/cobra"
 )
 
@@ -62,144 +60,180 @@ func runServer(configFileLocation string) {
 	l4g.Info(utils.T("mattermost.working_dir"), pwd)
 	l4g.Info(utils.T("mattermost.config_file"), utils.FindConfigFile(configFileLocation))
 
-	// Enable developer settings if this is a "dev" build
-	if model.BuildNumber == "dev" {
-		*utils.Cfg.ServiceSettings.EnableDeveloper = true
-	}
+	a := app.New(app.ConfigFile(configFileLocation))
+	defer a.Shutdown()
 
-	app.NewServer()
-	app.InitStores()
-	api.InitRouter()
-	wsapi.InitRouter()
-	api4.InitApi(false)
-	api.InitApi()
-	wsapi.InitApi()
-	web.InitWeb()
+	backend, err := a.FileBackend()
+	if err == nil {
+		err = backend.TestConnection()
+	}
+	if err != nil {
+		l4g.Error("Problem with file storage settings: " + err.Error())
+	}
 
 	if model.BuildEnterpriseReady == "true" {
-		app.LoadLicense()
+		a.LoadLicense()
 	}
 
-	if !utils.IsLicensed && len(utils.Cfg.SqlSettings.DataSourceReplicas) > 1 {
+	a.InitPlugins(*a.Config().PluginSettings.Directory, *a.Config().PluginSettings.ClientDirectory, nil)
+	utils.AddConfigListener(func(prevCfg, cfg *model.Config) {
+		if *cfg.PluginSettings.Enable {
+			a.InitPlugins(*cfg.PluginSettings.Directory, *a.Config().PluginSettings.ClientDirectory, nil)
+		} else {
+			a.ShutDownPlugins()
+		}
+	})
+
+	a.StartServer()
+	api4.Init(a, a.Srv.Router, false)
+	api3 := api.Init(a, a.Srv.Router)
+	wsapi.Init(a, a.Srv.WebSocketRouter)
+	web.Init(api3)
+
+	if !utils.IsLicensed() && len(a.Config().SqlSettings.DataSourceReplicas) > 1 {
 		l4g.Warn(utils.T("store.sql.read_replicas_not_licensed.critical"))
-		utils.Cfg.SqlSettings.DataSourceReplicas = utils.Cfg.SqlSettings.DataSourceReplicas[:1]
+		a.UpdateConfig(func(cfg *model.Config) {
+			cfg.SqlSettings.DataSourceReplicas = cfg.SqlSettings.DataSourceReplicas[:1]
+		})
 	}
 
-	if !utils.IsLicensed {
-		utils.Cfg.TeamSettings.MaxNotificationsPerChannel = &MaxNotificationsPerChannelDefault
+	if !utils.IsLicensed() {
+		a.UpdateConfig(func(cfg *model.Config) {
+			cfg.TeamSettings.MaxNotificationsPerChannel = &MaxNotificationsPerChannelDefault
+		})
 	}
 
-	app.ReloadConfig()
+	a.ReloadConfig()
 
-	resetStatuses()
+	// Enable developer settings if this is a "dev" build
+	if model.BuildNumber == "dev" {
+		a.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableDeveloper = true })
+	}
 
-	app.StartServer()
+	resetStatuses(a)
 
 	// If we allow testing then listen for manual testing URL hits
-	if utils.Cfg.ServiceSettings.EnableTesting {
-		manualtesting.InitManualTesting()
+	if a.Config().ServiceSettings.EnableTesting {
+		manualtesting.Init(api3)
 	}
 
-	setDiagnosticId()
+	setDiagnosticId(a)
 	utils.RegenerateClientConfig()
-	go runSecurityJob()
-	go runDiagnosticsJob()
+	go runSecurityJob(a)
+	go runDiagnosticsJob(a)
 
-	go runTokenCleanupJob()
+	go runTokenCleanupJob(a)
+	go runCommandWebhookCleanupJob(a)
 
-	if complianceI := einterfaces.GetComplianceInterface(); complianceI != nil {
+	if complianceI := a.Compliance; complianceI != nil {
 		complianceI.StartComplianceDailyJob()
 	}
 
-	if einterfaces.GetClusterInterface() != nil {
-		app.RegisterAllClusterMessageHandlers()
-		einterfaces.GetClusterInterface().StartInterNodeCommunication()
+	if a.Cluster != nil {
+		a.RegisterAllClusterMessageHandlers()
+		a.Cluster.StartInterNodeCommunication()
 	}
 
-	if einterfaces.GetMetricsInterface() != nil {
-		einterfaces.GetMetricsInterface().StartServer()
+	if a.Metrics != nil {
+		a.Metrics.StartServer()
 	}
 
-	if einterfaces.GetElasticsearchInterface() != nil {
-		if err := einterfaces.GetElasticsearchInterface().Start(); err != nil {
-			l4g.Error(err.Error())
-		}
+	if a.Elasticsearch != nil {
+		a.Go(func() {
+			if err := a.Elasticsearch.Start(); err != nil {
+				l4g.Error(err.Error())
+			}
+		})
 	}
 
-	jobs.Srv.Store = app.Srv.Store
-	if *utils.Cfg.JobSettings.RunJobs {
-		jobs.Srv.StartWorkers()
+	if *a.Config().JobSettings.RunJobs {
+		a.Jobs.StartWorkers()
 	}
-	if *utils.Cfg.JobSettings.RunScheduler {
-		jobs.Srv.StartSchedulers()
+	if *a.Config().JobSettings.RunScheduler {
+		a.Jobs.StartSchedulers()
 	}
 
 	// wait for kill signal before attempting to gracefully shutdown
 	// the running service
-	c := make(chan os.Signal)
+	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 	<-c
 
-	if einterfaces.GetClusterInterface() != nil {
-		einterfaces.GetClusterInterface().StopInterNodeCommunication()
+	if a.Cluster != nil {
+		a.Cluster.StopInterNodeCommunication()
 	}
 
-	if einterfaces.GetMetricsInterface() != nil {
-		einterfaces.GetMetricsInterface().StopServer()
+	if a.Metrics != nil {
+		a.Metrics.StopServer()
 	}
 
-	jobs.Srv.StopSchedulers()
-	jobs.Srv.StopWorkers()
-
-	app.StopServer()
+	a.Jobs.StopSchedulers()
+	a.Jobs.StopWorkers()
 }
 
-func runSecurityJob() {
-	doSecurity()
-	model.CreateRecurringTask("Security", doSecurity, time.Hour*4)
+func runSecurityJob(a *app.App) {
+	doSecurity(a)
+	model.CreateRecurringTask("Security", func() {
+		doSecurity(a)
+	}, time.Hour*4)
 }
 
-func runDiagnosticsJob() {
-	doDiagnostics()
-	model.CreateRecurringTask("Diagnostics", doDiagnostics, time.Hour*24)
+func runDiagnosticsJob(a *app.App) {
+	doDiagnostics(a)
+	model.CreateRecurringTask("Diagnostics", func() {
+		doDiagnostics(a)
+	}, time.Hour*24)
 }
 
-func runTokenCleanupJob() {
-	doTokenCleanup()
-	model.CreateRecurringTask("Token Cleanup", doTokenCleanup, time.Hour*1)
+func runTokenCleanupJob(a *app.App) {
+	doTokenCleanup(a)
+	model.CreateRecurringTask("Token Cleanup", func() {
+		doTokenCleanup(a)
+	}, time.Hour*1)
 }
 
-func resetStatuses() {
-	if result := <-app.Srv.Store.Status().ResetAll(); result.Err != nil {
+func runCommandWebhookCleanupJob(a *app.App) {
+	doCommandWebhookCleanup(a)
+	model.CreateRecurringTask("Command Hook Cleanup", func() {
+		doCommandWebhookCleanup(a)
+	}, time.Hour*1)
+}
+
+func resetStatuses(a *app.App) {
+	if result := <-a.Srv.Store.Status().ResetAll(); result.Err != nil {
 		l4g.Error(utils.T("mattermost.reset_status.error"), result.Err.Error())
 	}
 }
 
-func setDiagnosticId() {
-	if result := <-app.Srv.Store.System().Get(); result.Err == nil {
+func setDiagnosticId(a *app.App) {
+	if result := <-a.Srv.Store.System().Get(); result.Err == nil {
 		props := result.Data.(model.StringMap)
 
 		id := props[model.SYSTEM_DIAGNOSTIC_ID]
 		if len(id) == 0 {
 			id = model.NewId()
 			systemId := &model.System{Name: model.SYSTEM_DIAGNOSTIC_ID, Value: id}
-			<-app.Srv.Store.System().Save(systemId)
+			<-a.Srv.Store.System().Save(systemId)
 		}
 
 		utils.CfgDiagnosticId = id
 	}
 }
 
-func doSecurity() {
-	app.DoSecurityUpdateCheck()
+func doSecurity(a *app.App) {
+	a.DoSecurityUpdateCheck()
 }
 
-func doDiagnostics() {
+func doDiagnostics(a *app.App) {
 	if *utils.Cfg.LogSettings.EnableDiagnostics {
-		app.SendDailyDiagnostics()
+		a.SendDailyDiagnostics()
 	}
 }
 
-func doTokenCleanup() {
-	app.Srv.Store.Token().Cleanup()
+func doTokenCleanup(a *app.App) {
+	a.Srv.Store.Token().Cleanup()
+}
+
+func doCommandWebhookCleanup(a *app.App) {
+	a.Srv.Store.CommandWebhook().Cleanup()
 }

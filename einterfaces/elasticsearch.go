@@ -3,7 +3,11 @@
 
 package einterfaces
 
-import "github.com/mattermost/platform/model"
+import (
+	"time"
+
+	"github.com/mattermost/mattermost-server/model"
+)
 
 type ElasticsearchInterface interface {
 	Start() *model.AppError
@@ -12,14 +16,5 @@ type ElasticsearchInterface interface {
 	DeletePost(post *model.Post) *model.AppError
 	TestConfig(cfg *model.Config) *model.AppError
 	PurgeIndexes() *model.AppError
-}
-
-var theElasticsearchInterface ElasticsearchInterface
-
-func RegisterElasticsearchInterface(newInterface ElasticsearchInterface) {
-	theElasticsearchInterface = newInterface
-}
-
-func GetElasticsearchInterface() ElasticsearchInterface {
-	return theElasticsearchInterface
+	DataRetentionDeleteIndexes(cutoff time.Time) *model.AppError
 }

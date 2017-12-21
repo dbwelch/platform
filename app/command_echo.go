@@ -9,7 +9,7 @@ import (
 	"time"
 
 	l4g "github.com/alecthomas/log4go"
-	"github.com/mattermost/platform/model"
+	"github.com/mattermost/mattermost-server/model"
 	goi18n "github.com/nicksnyder/go-i18n/i18n"
 )
 
@@ -30,7 +30,7 @@ func (me *EchoProvider) GetTrigger() string {
 	return CMD_ECHO
 }
 
-func (me *EchoProvider) GetCommand(T goi18n.TranslateFunc) *model.Command {
+func (me *EchoProvider) GetCommand(a *App, T goi18n.TranslateFunc) *model.Command {
 	return &model.Command{
 		Trigger:          CMD_ECHO,
 		AutoComplete:     true,
@@ -40,7 +40,7 @@ func (me *EchoProvider) GetCommand(T goi18n.TranslateFunc) *model.Command {
 	}
 }
 
-func (me *EchoProvider) DoCommand(args *model.CommandArgs, message string) *model.CommandResponse {
+func (me *EchoProvider) DoCommand(a *App, args *model.CommandArgs, message string) *model.CommandResponse {
 	if len(message) == 0 {
 		return &model.CommandResponse{Text: args.T("api.command_echo.message.app_error"), ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
 	}
@@ -53,7 +53,7 @@ func (me *EchoProvider) DoCommand(args *model.CommandArgs, message string) *mode
 			delay = checkDelay
 		}
 		message = message[1:endMsg]
-	} else if strings.Index(message, " ") > -1 {
+	} else if strings.Contains(message, " ") {
 		delayIdx := strings.LastIndex(message, " ")
 		delayStr := strings.Trim(message[delayIdx:], " ")
 
@@ -77,7 +77,7 @@ func (me *EchoProvider) DoCommand(args *model.CommandArgs, message string) *mode
 	}
 
 	echoSem <- true
-	go func() {
+	a.Go(func() {
 		defer func() { <-echoSem }()
 		post := &model.Post{}
 		post.ChannelId = args.ChannelId
@@ -88,10 +88,10 @@ func (me *EchoProvider) DoCommand(args *model.CommandArgs, message string) *mode
 
 		time.Sleep(time.Duration(delay) * time.Second)
 
-		if _, err := CreatePost(post, args.TeamId, true); err != nil {
+		if _, err := a.CreatePostMissingChannel(post, true); err != nil {
 			l4g.Error(args.T("api.command_echo.create.app_error"), err)
 		}
-	}()
+	})
 
 	return &model.CommandResponse{}
 }

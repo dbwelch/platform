@@ -4,7 +4,7 @@
 package einterfaces
 
 import (
-	"github.com/mattermost/platform/model"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 type MfaInterface interface {
@@ -12,14 +12,4 @@ type MfaInterface interface {
 	Activate(user *model.User, token string) *model.AppError
 	Deactivate(userId string) *model.AppError
 	ValidateToken(secret, token string) (bool, *model.AppError)
-}
-
-var theMfaInterface MfaInterface
-
-func RegisterMfaInterface(newInterface MfaInterface) {
-	theMfaInterface = newInterface
-}
-
-func GetMfaInterface() MfaInterface {
-	return theMfaInterface
 }

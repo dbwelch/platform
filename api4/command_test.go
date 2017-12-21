@@ -4,23 +4,23 @@
 package api4
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 func TestCreateCommand(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
-	enableCommands := *utils.Cfg.ServiceSettings.EnableCommands
+	enableCommands := *th.App.Config().ServiceSettings.EnableCommands
 	defer func() {
-		utils.Cfg.ServiceSettings.EnableCommands = &enableCommands
+		th.App.UpdateConfig(func(cfg *model.Config) { cfg.ServiceSettings.EnableCommands = &enableCommands })
 	}()
-	*utils.Cfg.ServiceSettings.EnableCommands = true
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableCommands = true })
 
 	newCmd := &model.Command{
 		CreatorId: th.BasicUser.Id,
@@ -49,10 +49,10 @@ func TestCreateCommand(t *testing.T) {
 	newCmd.Method = "Wrong"
 	newCmd.Trigger = "testcommand"
 	_, resp = th.SystemAdminClient.CreateCommand(newCmd)
-	CheckInternalErrorStatus(t, resp)
+	CheckBadRequestStatus(t, resp)
 	CheckErrorMessage(t, resp, "model.command.is_valid.method.app_error")
 
-	*utils.Cfg.ServiceSettings.EnableCommands = false
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableCommands = false })
 	newCmd.Method = "P"
 	newCmd.Trigger = "testcommand"
 	_, resp = th.SystemAdminClient.CreateCommand(newCmd)
@@ -62,16 +62,16 @@ func TestCreateCommand(t *testing.T) {
 
 func TestUpdateCommand(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.SystemAdminClient
 	user := th.SystemAdminUser
 	team := th.BasicTeam
 
-	enableCommands := *utils.Cfg.ServiceSettings.EnableCommands
+	enableCommands := *th.App.Config().ServiceSettings.EnableCommands
 	defer func() {
-		utils.Cfg.ServiceSettings.EnableCommands = &enableCommands
+		th.App.UpdateConfig(func(cfg *model.Config) { cfg.ServiceSettings.EnableCommands = &enableCommands })
 	}()
-	*utils.Cfg.ServiceSettings.EnableCommands = true
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableCommands = true })
 
 	cmd1 := &model.Command{
 		CreatorId: user.Id,
@@ -81,7 +81,7 @@ func TestUpdateCommand(t *testing.T) {
 		Trigger:   "trigger1",
 	}
 
-	cmd1, _ = app.CreateCommand(cmd1)
+	cmd1, _ = th.App.CreateCommand(cmd1)
 
 	cmd2 := &model.Command{
 		CreatorId: GenerateTestId(),
@@ -148,16 +148,16 @@ func TestUpdateCommand(t *testing.T) {
 
 func TestDeleteCommand(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.SystemAdminClient
 	user := th.SystemAdminUser
 	team := th.BasicTeam
 
-	enableCommands := *utils.Cfg.ServiceSettings.EnableCommands
+	enableCommands := *th.App.Config().ServiceSettings.EnableCommands
 	defer func() {
-		utils.Cfg.ServiceSettings.EnableCommands = &enableCommands
+		th.App.UpdateConfig(func(cfg *model.Config) { cfg.ServiceSettings.EnableCommands = &enableCommands })
 	}()
-	*utils.Cfg.ServiceSettings.EnableCommands = true
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableCommands = true })
 
 	cmd1 := &model.Command{
 		CreatorId: user.Id,
@@ -167,7 +167,7 @@ func TestDeleteCommand(t *testing.T) {
 		Trigger:   "trigger1",
 	}
 
-	rcmd1, _ := app.CreateCommand(cmd1)
+	rcmd1, _ := th.App.CreateCommand(cmd1)
 
 	ok, resp := Client.DeleteCommand(rcmd1.Id)
 	CheckNoError(t, resp)
@@ -176,7 +176,7 @@ func TestDeleteCommand(t *testing.T) {
 		t.Fatal("should have returned true")
 	}
 
-	rcmd1, _ = app.GetCommand(rcmd1.Id)
+	rcmd1, _ = th.App.GetCommand(rcmd1.Id)
 	if rcmd1 != nil {
 		t.Fatal("should be nil")
 	}
@@ -199,7 +199,7 @@ func TestDeleteCommand(t *testing.T) {
 		Trigger:   "trigger2",
 	}
 
-	rcmd2, _ := app.CreateCommand(cmd2)
+	rcmd2, _ := th.App.CreateCommand(cmd2)
 
 	_, resp = th.Client.DeleteCommand(rcmd2.Id)
 	CheckForbiddenStatus(t, resp)
@@ -211,7 +211,7 @@ func TestDeleteCommand(t *testing.T) {
 
 func TestListCommands(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	newCmd := &model.Command{
@@ -288,7 +288,7 @@ func TestListCommands(t *testing.T) {
 
 func TestListAutocompleteCommands(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	newCmd := &model.Command{
@@ -348,14 +348,14 @@ func TestListAutocompleteCommands(t *testing.T) {
 
 func TestRegenToken(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
-	enableCommands := *utils.Cfg.ServiceSettings.EnableCommands
+	enableCommands := *th.App.Config().ServiceSettings.EnableCommands
 	defer func() {
-		utils.Cfg.ServiceSettings.EnableCommands = &enableCommands
+		th.App.UpdateConfig(func(cfg *model.Config) { cfg.ServiceSettings.EnableCommands = &enableCommands })
 	}()
-	*utils.Cfg.ServiceSettings.EnableCommands = true
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableCommands = true })
 
 	newCmd := &model.Command{
 		CreatorId: th.BasicUser.Id,
@@ -383,25 +383,30 @@ func TestRegenToken(t *testing.T) {
 
 func TestExecuteCommand(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 	channel := th.BasicChannel
 
-	enableCommands := *utils.Cfg.ServiceSettings.EnableCommands
+	enableCommands := *th.App.Config().ServiceSettings.EnableCommands
+	allowedInternalConnections := *th.App.Config().ServiceSettings.AllowedUntrustedInternalConnections
 	defer func() {
-		utils.Cfg.ServiceSettings.EnableCommands = &enableCommands
+		th.App.UpdateConfig(func(cfg *model.Config) { cfg.ServiceSettings.EnableCommands = &enableCommands })
+		th.App.UpdateConfig(func(cfg *model.Config) {
+			cfg.ServiceSettings.AllowedUntrustedInternalConnections = &allowedInternalConnections
+		})
 	}()
-	*utils.Cfg.ServiceSettings.EnableCommands = true
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableCommands = true })
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.AllowedUntrustedInternalConnections = "localhost" })
 
 	postCmd := &model.Command{
 		CreatorId: th.BasicUser.Id,
 		TeamId:    th.BasicTeam.Id,
-		URL:       "http://localhost" + utils.Cfg.ServiceSettings.ListenAddress + model.API_URL_SUFFIX_V4 + "/teams/command_test",
+		URL:       fmt.Sprintf("http://localhost:%v", th.App.Srv.ListenAddr.Port) + model.API_URL_SUFFIX_V4 + "/teams/command_test",
 		Method:    model.COMMAND_METHOD_POST,
 		Trigger:   "postcommand",
 	}
 
-	if _, err := app.CreateCommand(postCmd); err != nil {
+	if _, err := th.App.CreateCommand(postCmd); err != nil {
 		t.Fatal("failed to create post command")
 	}
 
@@ -412,20 +417,40 @@ func TestExecuteCommand(t *testing.T) {
 		t.Fatal("command response should have returned")
 	}
 
-	posts, err := app.GetPostsPage(channel.Id, 0, 10)
-	if err != nil || posts == nil || len(posts.Order) != 2 {
+	posts, err := th.App.GetPostsPage(channel.Id, 0, 10)
+	if err != nil || posts == nil || len(posts.Order) != 3 {
 		t.Fatal("Test command failed to send")
+	}
+
+	cmdPosted := false
+	for _, post := range posts.Posts {
+		if strings.Contains(post.Message, "test command response") {
+			if post.Type != "custom_test" {
+				t.Fatal("wrong type set in slash command post")
+			}
+
+			if post.Props["someprop"] != "somevalue" {
+				t.Fatal("wrong prop set in slash command post")
+			}
+
+			cmdPosted = true
+			break
+		}
+	}
+
+	if !cmdPosted {
+		t.Fatal("Test command response failed to post")
 	}
 
 	getCmd := &model.Command{
 		CreatorId: th.BasicUser.Id,
 		TeamId:    th.BasicTeam.Id,
-		URL:       "http://localhost" + utils.Cfg.ServiceSettings.ListenAddress + model.API_URL_SUFFIX_V4 + "/teams/command_test",
+		URL:       fmt.Sprintf("http://localhost:%v", th.App.Srv.ListenAddr.Port) + model.API_URL_SUFFIX_V4 + "/teams/command_test",
 		Method:    model.COMMAND_METHOD_GET,
 		Trigger:   "getcommand",
 	}
 
-	if _, err := app.CreateCommand(getCmd); err != nil {
+	if _, err := th.App.CreateCommand(getCmd); err != nil {
 		t.Fatal("failed to create get command")
 	}
 
@@ -436,8 +461,8 @@ func TestExecuteCommand(t *testing.T) {
 		t.Fatal("command response should have returned")
 	}
 
-	posts, err = app.GetPostsPage(channel.Id, 0, 10)
-	if err != nil || posts == nil || len(posts.Order) != 3 {
+	posts, err = th.App.GetPostsPage(channel.Id, 0, 10)
+	if err != nil || posts == nil || len(posts.Order) != 4 {
 		t.Fatal("Test command failed to send")
 	}
 
@@ -466,4 +491,174 @@ func TestExecuteCommand(t *testing.T) {
 
 	_, resp = th.SystemAdminClient.ExecuteCommand(channel.Id, "/getcommand")
 	CheckNoError(t, resp)
+}
+
+func TestExecuteCommandAgainstChannelOnAnotherTeam(t *testing.T) {
+	th := Setup().InitBasic()
+	defer th.TearDown()
+	Client := th.Client
+	channel := th.BasicChannel
+
+	enableCommands := *th.App.Config().ServiceSettings.EnableCommands
+	allowedInternalConnections := *th.App.Config().ServiceSettings.AllowedUntrustedInternalConnections
+	defer func() {
+		th.App.UpdateConfig(func(cfg *model.Config) { cfg.ServiceSettings.EnableCommands = &enableCommands })
+		th.App.UpdateConfig(func(cfg *model.Config) {
+			cfg.ServiceSettings.AllowedUntrustedInternalConnections = &allowedInternalConnections
+		})
+	}()
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableCommands = true })
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.AllowedUntrustedInternalConnections = "localhost" })
+
+	// create a slash command on some other team where we have permission to do so
+	team2 := th.CreateTeam()
+	postCmd := &model.Command{
+		CreatorId: th.BasicUser.Id,
+		TeamId:    team2.Id,
+		URL:       fmt.Sprintf("http://localhost:%v", th.App.Srv.ListenAddr.Port) + model.API_URL_SUFFIX_V4 + "/teams/command_test",
+		Method:    model.COMMAND_METHOD_POST,
+		Trigger:   "postcommand",
+	}
+	if _, err := th.App.CreateCommand(postCmd); err != nil {
+		t.Fatal("failed to create post command")
+	}
+
+	// the execute command endpoint will always search for the command by trigger and team id, inferring team id from the
+	// channel id, so there is no way to use that slash command on a channel that belongs to some other team
+	_, resp := Client.ExecuteCommand(channel.Id, "/postcommand")
+	CheckNotFoundStatus(t, resp)
+}
+
+func TestExecuteCommandAgainstChannelUserIsNotIn(t *testing.T) {
+	th := Setup().InitBasic()
+	defer th.TearDown()
+	client := th.Client
+
+	enableCommands := *th.App.Config().ServiceSettings.EnableCommands
+	allowedInternalConnections := *th.App.Config().ServiceSettings.AllowedUntrustedInternalConnections
+	defer func() {
+		th.App.UpdateConfig(func(cfg *model.Config) { cfg.ServiceSettings.EnableCommands = &enableCommands })
+		th.App.UpdateConfig(func(cfg *model.Config) {
+			cfg.ServiceSettings.AllowedUntrustedInternalConnections = &allowedInternalConnections
+		})
+	}()
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableCommands = true })
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.AllowedUntrustedInternalConnections = "localhost" })
+
+	// create a slash command on some other team where we have permission to do so
+	team2 := th.CreateTeam()
+	postCmd := &model.Command{
+		CreatorId: th.BasicUser.Id,
+		TeamId:    team2.Id,
+		URL:       fmt.Sprintf("http://localhost:%v", th.App.Srv.ListenAddr.Port) + model.API_URL_SUFFIX_V4 + "/teams/command_test",
+		Method:    model.COMMAND_METHOD_POST,
+		Trigger:   "postcommand",
+	}
+	if _, err := th.App.CreateCommand(postCmd); err != nil {
+		t.Fatal("failed to create post command")
+	}
+
+	// make a channel on that team, ensuring that our test user isn't in it
+	channel2 := th.CreateChannelWithClientAndTeam(client, model.CHANNEL_OPEN, team2.Id)
+	if success, _ := client.RemoveUserFromChannel(channel2.Id, th.BasicUser.Id); !success {
+		t.Fatal("Failed to remove user from channel")
+	}
+
+	// we should not be able to run the slash command in channel2, because we aren't in it
+	_, resp := client.ExecuteCommandWithTeam(channel2.Id, team2.Id, "/postcommand")
+	CheckForbiddenStatus(t, resp)
+}
+
+func TestExecuteCommandInDirectMessageChannel(t *testing.T) {
+	th := Setup().InitBasic()
+	defer th.TearDown()
+	client := th.Client
+
+	enableCommands := *th.App.Config().ServiceSettings.EnableCommands
+	allowedInternalConnections := *th.App.Config().ServiceSettings.AllowedUntrustedInternalConnections
+	defer func() {
+		th.App.UpdateConfig(func(cfg *model.Config) { cfg.ServiceSettings.EnableCommands = &enableCommands })
+		th.App.UpdateConfig(func(cfg *model.Config) {
+			cfg.ServiceSettings.AllowedUntrustedInternalConnections = &allowedInternalConnections
+		})
+	}()
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableCommands = true })
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.AllowedUntrustedInternalConnections = "localhost" })
+
+	// create a slash command on some other team where we have permission to do so
+	team2 := th.CreateTeam()
+	postCmd := &model.Command{
+		CreatorId: th.BasicUser.Id,
+		TeamId:    team2.Id,
+		URL:       fmt.Sprintf("http://localhost:%v", th.App.Srv.ListenAddr.Port) + model.API_URL_SUFFIX_V4 + "/teams/command_test",
+		Method:    model.COMMAND_METHOD_POST,
+		Trigger:   "postcommand",
+	}
+	if _, err := th.App.CreateCommand(postCmd); err != nil {
+		t.Fatal("failed to create post command")
+	}
+
+	// make a direct message channel
+	dmChannel, response := client.CreateDirectChannel(th.BasicUser.Id, th.BasicUser2.Id)
+	CheckCreatedStatus(t, response)
+
+	// we should be able to run the slash command in the DM channel
+	_, resp := client.ExecuteCommandWithTeam(dmChannel.Id, team2.Id, "/postcommand")
+	CheckOKStatus(t, resp)
+
+	// but we can't run the slash command in the DM channel if we sub in some other team's id
+	_, resp = client.ExecuteCommandWithTeam(dmChannel.Id, th.BasicTeam.Id, "/postcommand")
+	CheckNotFoundStatus(t, resp)
+}
+
+func TestExecuteCommandInTeamUserIsNotOn(t *testing.T) {
+	th := Setup().InitBasic()
+	defer th.TearDown()
+	client := th.Client
+
+	enableCommands := *th.App.Config().ServiceSettings.EnableCommands
+	allowedInternalConnections := *th.App.Config().ServiceSettings.AllowedUntrustedInternalConnections
+	defer func() {
+		th.App.UpdateConfig(func(cfg *model.Config) { cfg.ServiceSettings.EnableCommands = &enableCommands })
+		th.App.UpdateConfig(func(cfg *model.Config) {
+			cfg.ServiceSettings.AllowedUntrustedInternalConnections = &allowedInternalConnections
+		})
+	}()
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableCommands = true })
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.AllowedUntrustedInternalConnections = "localhost" })
+
+	// create a team that the user isn't a part of
+	team2 := th.CreateTeam()
+
+	// create a slash command on that team
+	postCmd := &model.Command{
+		CreatorId: th.BasicUser.Id,
+		TeamId:    team2.Id,
+		URL:       fmt.Sprintf("http://localhost:%v", th.App.Srv.ListenAddr.Port) + model.API_URL_SUFFIX_V4 + "/teams/command_test",
+		Method:    model.COMMAND_METHOD_POST,
+		Trigger:   "postcommand",
+	}
+	if _, err := th.App.CreateCommand(postCmd); err != nil {
+		t.Fatal("failed to create post command")
+	}
+
+	// make a direct message channel
+	dmChannel, response := client.CreateDirectChannel(th.BasicUser.Id, th.BasicUser2.Id)
+	CheckCreatedStatus(t, response)
+
+	// we should be able to run the slash command in the DM channel
+	_, resp := client.ExecuteCommandWithTeam(dmChannel.Id, team2.Id, "/postcommand")
+	CheckOKStatus(t, resp)
+
+	// if the user is removed from the team, they should NOT be able to run the slash command in the DM channel
+	if success, _ := client.RemoveTeamMember(team2.Id, th.BasicUser.Id); !success {
+		t.Fatal("Failed to remove user from team")
+	}
+	_, resp = client.ExecuteCommandWithTeam(dmChannel.Id, team2.Id, "/postcommand")
+	CheckForbiddenStatus(t, resp)
+
+	// if we omit the team id from the request, the slash command will fail because this is a DM channel, and the
+	// team id can't be inherited from the channel
+	_, resp = client.ExecuteCommand(dmChannel.Id, "/postcommand")
+	CheckForbiddenStatus(t, resp)
 }

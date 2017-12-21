@@ -3,9 +3,10 @@
 package main
 
 import (
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/store"
+	"github.com/mattermost/mattermost-server/app"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/store"
+	"github.com/mattermost/mattermost-server/store/sqlstore"
 	"github.com/spf13/cobra"
 )
 
@@ -16,20 +17,23 @@ var versionCmd = &cobra.Command{
 }
 
 func versionCmdF(cmd *cobra.Command, args []string) error {
-	if err := initDBCommandContextCobra(cmd); err != nil {
+	a, err := initDBCommandContextCobra(cmd)
+	if err != nil {
 		return err
 	}
 
-	printVersion()
+	printVersion(a)
 
 	return nil
 }
 
-func printVersion() {
+func printVersion(a *app.App) {
 	CommandPrintln("Version: " + model.CurrentVersion)
 	CommandPrintln("Build Number: " + model.BuildNumber)
 	CommandPrintln("Build Date: " + model.BuildDate)
 	CommandPrintln("Build Hash: " + model.BuildHash)
 	CommandPrintln("Build Enterprise Ready: " + model.BuildEnterpriseReady)
-	CommandPrintln("DB Version: " + app.Srv.Store.(*store.LayeredStore).DatabaseLayer.GetCurrentSchemaVersion())
+	if supplier, ok := a.Srv.Store.(*store.LayeredStore).DatabaseLayer.(*sqlstore.SqlSupplier); ok {
+		CommandPrintln("DB Version: " + supplier.GetCurrentSchemaVersion())
+	}
 }

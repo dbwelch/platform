@@ -7,20 +7,19 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net/http"
-	"reflect"
 	"strconv"
 	"strings"
 	"testing"
 
 	"encoding/base64"
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
 func TestCreateTeam(t *testing.T) {
 	th := Setup().InitBasic()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	team := &model.Team{Name: GenerateTestUsername(), DisplayName: "Some Team", Type: model.TEAM_OPEN}
@@ -69,22 +68,65 @@ func TestCreateTeam(t *testing.T) {
 	CheckUnauthorizedStatus(t, resp)
 
 	// Update permission
-	enableTeamCreation := utils.Cfg.TeamSettings.EnableTeamCreation
+	enableTeamCreation := th.App.Config().TeamSettings.EnableTeamCreation
 	defer func() {
-		utils.Cfg.TeamSettings.EnableTeamCreation = enableTeamCreation
-		utils.SetDefaultRolesBasedOnConfig()
+		th.App.UpdateConfig(func(cfg *model.Config) { cfg.TeamSettings.EnableTeamCreation = enableTeamCreation })
+		th.App.SetDefaultRolesBasedOnConfig()
 	}()
-	utils.Cfg.TeamSettings.EnableTeamCreation = false
-	utils.SetDefaultRolesBasedOnConfig()
+	th.App.UpdateConfig(func(cfg *model.Config) { cfg.TeamSettings.EnableTeamCreation = false })
+	th.App.SetDefaultRolesBasedOnConfig()
 
 	th.LoginBasic()
 	_, resp = Client.CreateTeam(team)
 	CheckForbiddenStatus(t, resp)
 }
 
+func TestCreateTeamSanitization(t *testing.T) {
+	th := Setup().InitBasic().InitSystemAdmin()
+	defer th.TearDown()
+
+	// Non-admin users can create a team, but they become a team admin by doing so
+
+	t.Run("team admin", func(t *testing.T) {
+		team := &model.Team{
+			DisplayName:    t.Name() + "_1",
+			Name:           GenerateTestTeamName(),
+			Email:          GenerateTestEmail(),
+			Type:           model.TEAM_OPEN,
+			AllowedDomains: "simulator.amazonses.com",
+		}
+
+		rteam, resp := th.Client.CreateTeam(team)
+		CheckNoError(t, resp)
+		if rteam.Email == "" {
+			t.Fatal("should not have sanitized email")
+		} else if rteam.AllowedDomains == "" {
+			t.Fatal("should not have sanitized allowed domains")
+		}
+	})
+
+	t.Run("system admin", func(t *testing.T) {
+		team := &model.Team{
+			DisplayName:    t.Name() + "_2",
+			Name:           GenerateTestTeamName(),
+			Email:          GenerateTestEmail(),
+			Type:           model.TEAM_OPEN,
+			AllowedDomains: "simulator.amazonses.com",
+		}
+
+		rteam, resp := th.SystemAdminClient.CreateTeam(team)
+		CheckNoError(t, resp)
+		if rteam.Email == "" {
+			t.Fatal("should not have sanitized email")
+		} else if rteam.AllowedDomains == "" {
+			t.Fatal("should not have sanitized allowed domains")
+		}
+	})
+}
+
 func TestGetTeam(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 	team := th.BasicTeam
 
@@ -106,11 +148,19 @@ func TestGetTeam(t *testing.T) {
 
 	th.LoginTeamAdmin()
 
-	team2 := &model.Team{DisplayName: "Name", Name: GenerateTestTeamName(), Email: GenerateTestEmail(), Type: model.TEAM_INVITE}
+	team2 := &model.Team{DisplayName: "Name", Name: GenerateTestTeamName(), Email: GenerateTestEmail(), Type: model.TEAM_OPEN, AllowOpenInvite: false}
 	rteam2, _ := Client.CreateTeam(team2)
 
+	team3 := &model.Team{DisplayName: "Name", Name: GenerateTestTeamName(), Email: GenerateTestEmail(), Type: model.TEAM_INVITE, AllowOpenInvite: true}
+	rteam3, _ := Client.CreateTeam(team3)
+
 	th.LoginBasic()
+	// AllowInviteOpen is false and team is open, and user is not on team
 	_, resp = Client.GetTeam(rteam2.Id, "")
+	CheckForbiddenStatus(t, resp)
+
+	// AllowInviteOpen is true and team is invite, and user is not on team
+	_, resp = Client.GetTeam(rteam3.Id, "")
 	CheckForbiddenStatus(t, resp)
 
 	Client.Logout()
@@ -121,9 +171,58 @@ func TestGetTeam(t *testing.T) {
 	CheckNoError(t, resp)
 }
 
+func TestGetTeamSanitization(t *testing.T) {
+	th := Setup().InitBasic().InitSystemAdmin()
+	defer th.TearDown()
+
+	team, resp := th.Client.CreateTeam(&model.Team{
+		DisplayName:    t.Name() + "_1",
+		Name:           GenerateTestTeamName(),
+		Email:          GenerateTestEmail(),
+		Type:           model.TEAM_OPEN,
+		AllowedDomains: "simulator.amazonses.com",
+	})
+	CheckNoError(t, resp)
+
+	t.Run("team user", func(t *testing.T) {
+		th.LinkUserToTeam(th.BasicUser2, team)
+
+		client := th.CreateClient()
+		th.LoginBasic2WithClient(client)
+
+		rteam, resp := client.GetTeam(team.Id, "")
+		CheckNoError(t, resp)
+		if rteam.Email != "" {
+			t.Fatal("should've sanitized email")
+		} else if rteam.AllowedDomains != "" {
+			t.Fatal("should've sanitized allowed domains")
+		}
+	})
+
+	t.Run("team admin", func(t *testing.T) {
+		rteam, resp := th.Client.GetTeam(team.Id, "")
+		CheckNoError(t, resp)
+		if rteam.Email == "" {
+			t.Fatal("should not have sanitized email")
+		} else if rteam.AllowedDomains == "" {
+			t.Fatal("should not have sanitized allowed domains")
+		}
+	})
+
+	t.Run("system admin", func(t *testing.T) {
+		rteam, resp := th.SystemAdminClient.GetTeam(team.Id, "")
+		CheckNoError(t, resp)
+		if rteam.Email == "" {
+			t.Fatal("should not have sanitized email")
+		} else if rteam.AllowedDomains == "" {
+			t.Fatal("should not have sanitized allowed domains")
+		}
+	})
+}
+
 func TestGetTeamUnread(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	teamUnread, resp := Client.GetTeamUnread(th.BasicTeam.Id, th.BasicUser.Id)
@@ -157,7 +256,7 @@ func TestGetTeamUnread(t *testing.T) {
 
 func TestUpdateTeam(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	team := &model.Team{DisplayName: "Name", Description: "Some description", AllowOpenInvite: false, InviteId: "inviteid0", Name: "z-z-" + model.NewId() + "a", Email: "success+" + model.NewId() + "@simulator.amazonses.com", Type: model.TEAM_OPEN}
@@ -183,7 +282,7 @@ func TestUpdateTeam(t *testing.T) {
 	uteam, resp = Client.UpdateTeam(team)
 	CheckNoError(t, resp)
 
-	if uteam.AllowOpenInvite != true {
+	if !uteam.AllowOpenInvite {
 		t.Fatal("Update failed")
 	}
 
@@ -192,6 +291,14 @@ func TestUpdateTeam(t *testing.T) {
 	CheckNoError(t, resp)
 
 	if uteam.InviteId != "inviteid1" {
+		t.Fatal("Update failed")
+	}
+
+	team.AllowedDomains = "domain"
+	uteam, resp = Client.UpdateTeam(team)
+	CheckNoError(t, resp)
+
+	if uteam.AllowedDomains != "domain" {
 		t.Fatal("Update failed")
 	}
 
@@ -217,14 +324,6 @@ func TestUpdateTeam(t *testing.T) {
 
 	if uteam.Type == model.TEAM_INVITE {
 		t.Fatal("Should not update type")
-	}
-
-	team.AllowedDomains = "domain"
-	uteam, resp = Client.UpdateTeam(team)
-	CheckNoError(t, resp)
-
-	if uteam.AllowedDomains == "domain" {
-		t.Fatal("Should not update allowed_domains")
 	}
 
 	originalTeamId := team.Id
@@ -253,9 +352,45 @@ func TestUpdateTeam(t *testing.T) {
 	CheckNoError(t, resp)
 }
 
+func TestUpdateTeamSanitization(t *testing.T) {
+	th := Setup().InitBasic().InitSystemAdmin()
+	defer th.TearDown()
+
+	team, resp := th.Client.CreateTeam(&model.Team{
+		DisplayName:    t.Name() + "_1",
+		Name:           GenerateTestTeamName(),
+		Email:          GenerateTestEmail(),
+		Type:           model.TEAM_OPEN,
+		AllowedDomains: "simulator.amazonses.com",
+	})
+	CheckNoError(t, resp)
+
+	// Non-admin users cannot update the team
+
+	t.Run("team admin", func(t *testing.T) {
+		rteam, resp := th.Client.UpdateTeam(team)
+		CheckNoError(t, resp)
+		if rteam.Email == "" {
+			t.Fatal("should not have sanitized email for admin")
+		} else if rteam.AllowedDomains == "" {
+			t.Fatal("should not have sanitized allowed domains")
+		}
+	})
+
+	t.Run("system admin", func(t *testing.T) {
+		rteam, resp := th.SystemAdminClient.UpdateTeam(team)
+		CheckNoError(t, resp)
+		if rteam.Email == "" {
+			t.Fatal("should not have sanitized email for admin")
+		} else if rteam.AllowedDomains == "" {
+			t.Fatal("should not have sanitized allowed domains")
+		}
+	})
+}
+
 func TestPatchTeam(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	team := &model.Team{DisplayName: "Name", Description: "Some description", CompanyName: "Some company name", AllowOpenInvite: false, InviteId: "inviteid0", Name: "z-z-" + model.NewId() + "a", Email: "success+" + model.NewId() + "@simulator.amazonses.com", Type: model.TEAM_OPEN}
@@ -263,20 +398,14 @@ func TestPatchTeam(t *testing.T) {
 
 	patch := &model.TeamPatch{}
 
-	patch.DisplayName = new(string)
-	*patch.DisplayName = "Other name"
-	patch.Description = new(string)
-	*patch.Description = "Other description"
-	patch.CompanyName = new(string)
-	*patch.CompanyName = "Other company name"
-	patch.InviteId = new(string)
-	*patch.InviteId = "inviteid1"
-	patch.AllowOpenInvite = new(bool)
-	*patch.AllowOpenInvite = true
+	patch.DisplayName = model.NewString("Other name")
+	patch.Description = model.NewString("Other description")
+	patch.CompanyName = model.NewString("Other company name")
+	patch.InviteId = model.NewString("inviteid1")
+	patch.AllowOpenInvite = model.NewBool(true)
 
 	rteam, resp := Client.PatchTeam(team.Id, patch)
 	CheckNoError(t, resp)
-	CheckTeamSanitization(t, rteam)
 
 	if rteam.DisplayName != "Other name" {
 		t.Fatal("DisplayName did not update properly")
@@ -290,7 +419,7 @@ func TestPatchTeam(t *testing.T) {
 	if rteam.InviteId != "inviteid1" {
 		t.Fatal("InviteId did not update properly")
 	}
-	if rteam.AllowOpenInvite != true {
+	if !rteam.AllowOpenInvite {
 		t.Fatal("AllowOpenInvite did not update properly")
 	}
 
@@ -322,9 +451,45 @@ func TestPatchTeam(t *testing.T) {
 	CheckNoError(t, resp)
 }
 
+func TestPatchTeamSanitization(t *testing.T) {
+	th := Setup().InitBasic().InitSystemAdmin()
+	defer th.TearDown()
+
+	team, resp := th.Client.CreateTeam(&model.Team{
+		DisplayName:    t.Name() + "_1",
+		Name:           GenerateTestTeamName(),
+		Email:          GenerateTestEmail(),
+		Type:           model.TEAM_OPEN,
+		AllowedDomains: "simulator.amazonses.com",
+	})
+	CheckNoError(t, resp)
+
+	// Non-admin users cannot update the team
+
+	t.Run("team admin", func(t *testing.T) {
+		rteam, resp := th.Client.PatchTeam(team.Id, &model.TeamPatch{})
+		CheckNoError(t, resp)
+		if rteam.Email == "" {
+			t.Fatal("should not have sanitized email for admin")
+		} else if rteam.AllowedDomains == "" {
+			t.Fatal("should not have sanitized allowed domains")
+		}
+	})
+
+	t.Run("system admin", func(t *testing.T) {
+		rteam, resp := th.SystemAdminClient.PatchTeam(team.Id, &model.TeamPatch{})
+		CheckNoError(t, resp)
+		if rteam.Email == "" {
+			t.Fatal("should not have sanitized email for admin")
+		} else if rteam.AllowedDomains == "" {
+			t.Fatal("should not have sanitized allowed domains")
+		}
+	})
+}
+
 func TestSoftDeleteTeam(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	team := &model.Team{DisplayName: "DisplayName", Name: GenerateTestTeamName(), Email: GenerateTestEmail(), Type: model.TEAM_OPEN}
@@ -337,7 +502,7 @@ func TestSoftDeleteTeam(t *testing.T) {
 		t.Fatal("should have returned true")
 	}
 
-	rteam, err := app.GetTeam(team.Id)
+	rteam, err := th.App.GetTeam(team.Id)
 	if err != nil {
 		t.Fatal("should have returned archived team")
 	}
@@ -366,7 +531,7 @@ func TestSoftDeleteTeam(t *testing.T) {
 
 func TestPermanentDeleteTeam(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	team := &model.Team{DisplayName: "DisplayName", Name: GenerateTestTeamName(), Email: GenerateTestEmail(), Type: model.TEAM_OPEN}
@@ -381,7 +546,7 @@ func TestPermanentDeleteTeam(t *testing.T) {
 
 	// The team is deleted in the background, its only soft deleted at this
 	// time
-	rteam, err := app.GetTeam(team.Id)
+	rteam, err := th.App.GetTeam(team.Id)
 	if err != nil {
 		t.Fatal("should have returned archived team")
 	}
@@ -399,7 +564,7 @@ func TestPermanentDeleteTeam(t *testing.T) {
 
 func TestGetAllTeams(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	team := &model.Team{DisplayName: "Name", Name: GenerateTestTeamName(), Email: GenerateTestEmail(), Type: model.TEAM_OPEN, AllowOpenInvite: true}
@@ -415,7 +580,16 @@ func TestGetAllTeams(t *testing.T) {
 	}
 
 	for _, rt := range rrteams {
-		if rt.Type != model.TEAM_OPEN {
+		if !rt.AllowOpenInvite {
+			t.Fatal("not all teams are open")
+		}
+	}
+
+	rrteams, resp = Client.GetAllTeams("", 0, 10)
+	CheckNoError(t, resp)
+
+	for _, rt := range rrteams {
+		if !rt.AllowOpenInvite {
 			t.Fatal("not all teams are open")
 		}
 	}
@@ -446,9 +620,80 @@ func TestGetAllTeams(t *testing.T) {
 	CheckUnauthorizedStatus(t, resp)
 }
 
+func TestGetAllTeamsSanitization(t *testing.T) {
+	th := Setup().InitBasic().InitSystemAdmin()
+	defer th.TearDown()
+
+	team, resp := th.Client.CreateTeam(&model.Team{
+		DisplayName:     t.Name() + "_1",
+		Name:            GenerateTestTeamName(),
+		Email:           GenerateTestEmail(),
+		Type:            model.TEAM_OPEN,
+		AllowedDomains:  "simulator.amazonses.com",
+		AllowOpenInvite: true,
+	})
+	CheckNoError(t, resp)
+	team2, resp := th.SystemAdminClient.CreateTeam(&model.Team{
+		DisplayName:     t.Name() + "_2",
+		Name:            GenerateTestTeamName(),
+		Email:           GenerateTestEmail(),
+		Type:            model.TEAM_OPEN,
+		AllowedDomains:  "simulator.amazonses.com",
+		AllowOpenInvite: true,
+	})
+	CheckNoError(t, resp)
+
+	// This may not work if the server has over 1000 open teams on it
+
+	t.Run("team admin/non-admin", func(t *testing.T) {
+		teamFound := false
+		team2Found := false
+
+		rteams, resp := th.Client.GetAllTeams("", 0, 1000)
+		CheckNoError(t, resp)
+		for _, rteam := range rteams {
+			if rteam.Id == team.Id {
+				teamFound = true
+				if rteam.Email == "" {
+					t.Fatal("should not have sanitized email for team admin")
+				} else if rteam.AllowedDomains == "" {
+					t.Fatal("should not have sanitized allowed domains for team admin")
+				}
+			} else if rteam.Id == team2.Id {
+				team2Found = true
+				if rteam.Email != "" {
+					t.Fatal("should've sanitized email for non-admin")
+				} else if rteam.AllowedDomains != "" {
+					t.Fatal("should've sanitized allowed domains for non-admin")
+				}
+			}
+		}
+
+		if !teamFound || !team2Found {
+			t.Fatal("wasn't returned the expected teams so the test wasn't run correctly")
+		}
+	})
+
+	t.Run("system admin", func(t *testing.T) {
+		rteams, resp := th.SystemAdminClient.GetAllTeams("", 0, 1000)
+		CheckNoError(t, resp)
+		for _, rteam := range rteams {
+			if rteam.Id != team.Id && rteam.Id != team2.Id {
+				continue
+			}
+
+			if rteam.Email == "" {
+				t.Fatal("should not have sanitized email")
+			} else if rteam.AllowedDomains == "" {
+				t.Fatal("should not have sanitized allowed domains")
+			}
+		}
+	})
+}
+
 func TestGetTeamByName(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 	team := th.BasicTeam
 
@@ -474,19 +719,83 @@ func TestGetTeamByName(t *testing.T) {
 
 	th.LoginTeamAdmin()
 
-	team2 := &model.Team{DisplayName: "Name", Name: GenerateTestTeamName(), Email: GenerateTestEmail(), Type: model.TEAM_INVITE}
+	team2 := &model.Team{DisplayName: "Name", Name: GenerateTestTeamName(), Email: GenerateTestEmail(), Type: model.TEAM_OPEN, AllowOpenInvite: false}
 	rteam2, _ := Client.CreateTeam(team2)
 
+	team3 := &model.Team{DisplayName: "Name", Name: GenerateTestTeamName(), Email: GenerateTestEmail(), Type: model.TEAM_INVITE, AllowOpenInvite: true}
+	rteam3, _ := Client.CreateTeam(team3)
+
 	th.LoginBasic()
+	// AllowInviteOpen is false and team is open, and user is not on team
 	_, resp = Client.GetTeamByName(rteam2.Name, "")
 	CheckForbiddenStatus(t, resp)
+
+	// AllowInviteOpen is true and team is invite only, and user is not on team
+	_, resp = Client.GetTeamByName(rteam3.Name, "")
+	CheckForbiddenStatus(t, resp)
+}
+
+func TestGetTeamByNameSanitization(t *testing.T) {
+	th := Setup().InitBasic().InitSystemAdmin()
+	defer th.TearDown()
+
+	team, resp := th.Client.CreateTeam(&model.Team{
+		DisplayName:    t.Name() + "_1",
+		Name:           GenerateTestTeamName(),
+		Email:          GenerateTestEmail(),
+		Type:           model.TEAM_OPEN,
+		AllowedDomains: "simulator.amazonses.com",
+	})
+	CheckNoError(t, resp)
+
+	t.Run("team user", func(t *testing.T) {
+		th.LinkUserToTeam(th.BasicUser2, team)
+
+		client := th.CreateClient()
+		th.LoginBasic2WithClient(client)
+
+		rteam, resp := client.GetTeamByName(team.Name, "")
+		CheckNoError(t, resp)
+		if rteam.Email != "" {
+			t.Fatal("should've sanitized email")
+		} else if rteam.AllowedDomains != "" {
+			t.Fatal("should've sanitized allowed domains")
+		}
+	})
+
+	t.Run("team admin/non-admin", func(t *testing.T) {
+		rteam, resp := th.Client.GetTeamByName(team.Name, "")
+		CheckNoError(t, resp)
+		if rteam.Email == "" {
+			t.Fatal("should not have sanitized email")
+		} else if rteam.AllowedDomains == "" {
+			t.Fatal("should not have sanitized allowed domains")
+		}
+	})
+
+	t.Run("system admin", func(t *testing.T) {
+		rteam, resp := th.SystemAdminClient.GetTeamByName(team.Name, "")
+		CheckNoError(t, resp)
+		if rteam.Email == "" {
+			t.Fatal("should not have sanitized email")
+		} else if rteam.AllowedDomains == "" {
+			t.Fatal("should not have sanitized allowed domains")
+		}
+	})
 }
 
 func TestSearchAllTeams(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 	oTeam := th.BasicTeam
+	oTeam.AllowOpenInvite = true
+
+	if updatedTeam, err := th.App.UpdateTeam(oTeam); err != nil {
+		t.Fatal(err)
+	} else {
+		oTeam.UpdateAt = updatedTeam.UpdateAt
+	}
 
 	pTeam := &model.Team{DisplayName: "PName", Name: GenerateTestTeamName(), Email: GenerateTestEmail(), Type: model.TEAM_INVITE}
 	Client.CreateTeam(pTeam)
@@ -498,7 +807,7 @@ func TestSearchAllTeams(t *testing.T) {
 		t.Fatal("should have returned 1 team")
 	}
 
-	if !reflect.DeepEqual(rteams[0], oTeam) {
+	if oTeam.Id != rteams[0].Id {
 		t.Fatal("invalid team")
 	}
 
@@ -509,7 +818,7 @@ func TestSearchAllTeams(t *testing.T) {
 		t.Fatal("should have returned 1 team")
 	}
 
-	if !reflect.DeepEqual(rteams[0], oTeam) {
+	if rteams[0].Id != oTeam.Id {
 		t.Fatal("invalid team")
 	}
 
@@ -557,9 +866,89 @@ func TestSearchAllTeams(t *testing.T) {
 	CheckUnauthorizedStatus(t, resp)
 }
 
+func TestSearchAllTeamsSanitization(t *testing.T) {
+	th := Setup().InitBasic().InitSystemAdmin()
+	defer th.TearDown()
+
+	team, resp := th.Client.CreateTeam(&model.Team{
+		DisplayName:    t.Name() + "_1",
+		Name:           GenerateTestTeamName(),
+		Email:          GenerateTestEmail(),
+		Type:           model.TEAM_OPEN,
+		AllowedDomains: "simulator.amazonses.com",
+	})
+	CheckNoError(t, resp)
+	team2, resp := th.Client.CreateTeam(&model.Team{
+		DisplayName:    t.Name() + "_2",
+		Name:           GenerateTestTeamName(),
+		Email:          GenerateTestEmail(),
+		Type:           model.TEAM_OPEN,
+		AllowedDomains: "simulator.amazonses.com",
+	})
+	CheckNoError(t, resp)
+
+	t.Run("non-team user", func(t *testing.T) {
+		client := th.CreateClient()
+		th.LoginBasic2WithClient(client)
+
+		rteams, resp := client.SearchTeams(&model.TeamSearch{Term: t.Name()})
+		CheckNoError(t, resp)
+		for _, rteam := range rteams {
+			if rteam.Email != "" {
+				t.Fatal("should've sanitized email")
+			} else if rteam.AllowedDomains != "" {
+				t.Fatal("should've sanitized allowed domains")
+			}
+		}
+	})
+
+	t.Run("team user", func(t *testing.T) {
+		th.LinkUserToTeam(th.BasicUser2, team)
+
+		client := th.CreateClient()
+		th.LoginBasic2WithClient(client)
+
+		rteams, resp := client.SearchTeams(&model.TeamSearch{Term: t.Name()})
+		CheckNoError(t, resp)
+		for _, rteam := range rteams {
+			if rteam.Email != "" {
+				t.Fatal("should've sanitized email")
+			} else if rteam.AllowedDomains != "" {
+				t.Fatal("should've sanitized allowed domains")
+			}
+		}
+	})
+
+	t.Run("team admin", func(t *testing.T) {
+		rteams, resp := th.Client.SearchTeams(&model.TeamSearch{Term: t.Name()})
+		CheckNoError(t, resp)
+		for _, rteam := range rteams {
+			if rteam.Id == team.Id || rteam.Id == team2.Id || rteam.Id == th.BasicTeam.Id {
+				if rteam.Email == "" {
+					t.Fatal("should not have sanitized email")
+				} else if rteam.AllowedDomains == "" {
+					t.Fatal("should not have sanitized allowed domains")
+				}
+			}
+		}
+	})
+
+	t.Run("system admin", func(t *testing.T) {
+		rteams, resp := th.SystemAdminClient.SearchTeams(&model.TeamSearch{Term: t.Name()})
+		CheckNoError(t, resp)
+		for _, rteam := range rteams {
+			if rteam.Email == "" {
+				t.Fatal("should not have sanitized email")
+			} else if rteam.AllowedDomains == "" {
+				t.Fatal("should not have sanitized allowed domains")
+			}
+		}
+	})
+}
+
 func TestGetTeamsForUser(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	team2 := &model.Team{DisplayName: "Name", Name: GenerateTestTeamName(), Email: GenerateTestEmail(), Type: model.TEAM_INVITE}
@@ -599,9 +988,85 @@ func TestGetTeamsForUser(t *testing.T) {
 	CheckNoError(t, resp)
 }
 
+func TestGetTeamsForUserSanitization(t *testing.T) {
+	th := Setup().InitBasic().InitSystemAdmin()
+	defer th.TearDown()
+
+	team, resp := th.Client.CreateTeam(&model.Team{
+		DisplayName:    t.Name() + "_1",
+		Name:           GenerateTestTeamName(),
+		Email:          GenerateTestEmail(),
+		Type:           model.TEAM_OPEN,
+		AllowedDomains: "simulator.amazonses.com",
+	})
+	CheckNoError(t, resp)
+	team2, resp := th.Client.CreateTeam(&model.Team{
+		DisplayName:    t.Name() + "_2",
+		Name:           GenerateTestTeamName(),
+		Email:          GenerateTestEmail(),
+		Type:           model.TEAM_OPEN,
+		AllowedDomains: "simulator.amazonses.com",
+	})
+	CheckNoError(t, resp)
+
+	t.Run("team user", func(t *testing.T) {
+		th.LinkUserToTeam(th.BasicUser2, team)
+		th.LinkUserToTeam(th.BasicUser2, team2)
+
+		client := th.CreateClient()
+		th.LoginBasic2WithClient(client)
+
+		rteams, resp := client.GetTeamsForUser(th.BasicUser2.Id, "")
+		CheckNoError(t, resp)
+		for _, rteam := range rteams {
+			if rteam.Id != team.Id && rteam.Id != team2.Id {
+				continue
+			}
+
+			if rteam.Email != "" {
+				t.Fatal("should've sanitized email")
+			} else if rteam.AllowedDomains != "" {
+				t.Fatal("should've sanitized allowed domains")
+			}
+		}
+	})
+
+	t.Run("team admin", func(t *testing.T) {
+		rteams, resp := th.Client.GetTeamsForUser(th.BasicUser.Id, "")
+		CheckNoError(t, resp)
+		for _, rteam := range rteams {
+			if rteam.Id != team.Id && rteam.Id != team2.Id {
+				continue
+			}
+
+			if rteam.Email == "" {
+				t.Fatal("should not have sanitized email")
+			} else if rteam.AllowedDomains == "" {
+				t.Fatal("should not have sanitized allowed domains")
+			}
+		}
+	})
+
+	t.Run("system admin", func(t *testing.T) {
+		rteams, resp := th.SystemAdminClient.GetTeamsForUser(th.BasicUser.Id, "")
+		CheckNoError(t, resp)
+		for _, rteam := range rteams {
+			if rteam.Id != team.Id && rteam.Id != team2.Id {
+				continue
+			}
+
+			if rteam.Email == "" {
+				t.Fatal("should not have sanitized email")
+			} else if rteam.AllowedDomains == "" {
+				t.Fatal("should not have sanitized allowed domains")
+			}
+		}
+	})
+}
+
 func TestGetTeamMember(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 	team := th.BasicTeam
 	user := th.BasicUser
@@ -638,7 +1103,7 @@ func TestGetTeamMember(t *testing.T) {
 
 func TestGetTeamMembers(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 	team := th.BasicTeam
 	userNotMember := th.CreateUser()
@@ -692,7 +1157,7 @@ func TestGetTeamMembers(t *testing.T) {
 
 func TestGetTeamMembersForUser(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	members, resp := Client.GetTeamMembersForUser(th.BasicUser.Id, "")
@@ -730,7 +1195,7 @@ func TestGetTeamMembersForUser(t *testing.T) {
 
 func TestGetTeamMembersByIds(t *testing.T) {
 	th := Setup().InitBasic()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	tm, resp := Client.GetTeamMembersByIds(th.BasicTeam.Id, []string{th.BasicUser.Id})
@@ -768,12 +1233,12 @@ func TestGetTeamMembersByIds(t *testing.T) {
 
 func TestAddTeamMember(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 	team := th.BasicTeam
 	otherUser := th.CreateUser()
 
-	if err := app.RemoveUserFromTeam(th.BasicTeam.Id, th.BasicUser2.Id); err != nil {
+	if err := th.App.RemoveUserFromTeam(th.BasicTeam.Id, th.BasicUser2.Id, ""); err != nil {
 		t.Fatalf(err.Error())
 	}
 
@@ -825,19 +1290,19 @@ func TestAddTeamMember(t *testing.T) {
 	Client.Logout()
 
 	// Check effects of config and license changes.
-	restrictTeamInvite := *utils.Cfg.TeamSettings.RestrictTeamInvite
-	isLicensed := utils.IsLicensed
-	license := utils.License
+	restrictTeamInvite := *th.App.Config().TeamSettings.RestrictTeamInvite
+	isLicensed := utils.IsLicensed()
+	license := utils.License()
 	defer func() {
-		*utils.Cfg.TeamSettings.RestrictTeamInvite = restrictTeamInvite
-		utils.IsLicensed = isLicensed
-		utils.License = license
-		utils.SetDefaultRolesBasedOnConfig()
+		th.App.UpdateConfig(func(cfg *model.Config) { *cfg.TeamSettings.RestrictTeamInvite = restrictTeamInvite })
+		utils.SetIsLicensed(isLicensed)
+		utils.SetLicense(license)
+		th.App.SetDefaultRolesBasedOnConfig()
 	}()
 
 	// Set the config so that only team admins can add a user to a team.
-	*utils.Cfg.TeamSettings.RestrictTeamInvite = model.PERMISSIONS_TEAM_ADMIN
-	utils.SetDefaultRolesBasedOnConfig()
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.TeamSettings.RestrictTeamInvite = model.PERMISSIONS_TEAM_ADMIN })
+	th.App.SetDefaultRolesBasedOnConfig()
 	th.LoginBasic()
 
 	// Test without the EE license to see that the permission restriction is ignored.
@@ -845,10 +1310,10 @@ func TestAddTeamMember(t *testing.T) {
 	CheckNoError(t, resp)
 
 	// Add an EE license.
-	utils.IsLicensed = true
-	utils.License = &model.License{Features: &model.Features{}}
-	utils.License.Features.SetDefaults()
-	utils.SetDefaultRolesBasedOnConfig()
+	utils.SetIsLicensed(true)
+	utils.SetLicense(&model.License{Features: &model.Features{}})
+	utils.License().Features.SetDefaults()
+	th.App.SetDefaultRolesBasedOnConfig()
 	th.LoginBasic()
 
 	// Check that a regular user can't add someone to the team.
@@ -856,13 +1321,13 @@ func TestAddTeamMember(t *testing.T) {
 	CheckForbiddenStatus(t, resp)
 
 	// Update user to team admin
-	UpdateUserToTeamAdmin(th.BasicUser, th.BasicTeam)
-	app.InvalidateAllCaches()
-	*utils.Cfg.TeamSettings.RestrictTeamInvite = model.PERMISSIONS_TEAM_ADMIN
-	utils.IsLicensed = true
-	utils.License = &model.License{Features: &model.Features{}}
-	utils.License.Features.SetDefaults()
-	utils.SetDefaultRolesBasedOnConfig()
+	th.UpdateUserToTeamAdmin(th.BasicUser, th.BasicTeam)
+	th.App.InvalidateAllCaches()
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.TeamSettings.RestrictTeamInvite = model.PERMISSIONS_TEAM_ADMIN })
+	utils.SetIsLicensed(true)
+	utils.SetLicense(&model.License{Features: &model.Features{}})
+	utils.License().Features.SetDefaults()
+	th.App.SetDefaultRolesBasedOnConfig()
 	th.LoginBasic()
 
 	// Should work as a team admin.
@@ -870,8 +1335,8 @@ func TestAddTeamMember(t *testing.T) {
 	CheckNoError(t, resp)
 
 	// Change permission level to System Admin
-	*utils.Cfg.TeamSettings.RestrictTeamInvite = model.PERMISSIONS_SYSTEM_ADMIN
-	utils.SetDefaultRolesBasedOnConfig()
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.TeamSettings.RestrictTeamInvite = model.PERMISSIONS_SYSTEM_ADMIN })
+	th.App.SetDefaultRolesBasedOnConfig()
 
 	// Should not work as team admin.
 	_, resp = Client.AddTeamMember(team.Id, otherUser.Id)
@@ -882,13 +1347,13 @@ func TestAddTeamMember(t *testing.T) {
 	CheckNoError(t, resp)
 
 	// Change permission level to All
-	UpdateUserToNonTeamAdmin(th.BasicUser, th.BasicTeam)
-	app.InvalidateAllCaches()
-	*utils.Cfg.TeamSettings.RestrictTeamInvite = model.PERMISSIONS_ALL
-	utils.IsLicensed = true
-	utils.License = &model.License{Features: &model.Features{}}
-	utils.License.Features.SetDefaults()
-	utils.SetDefaultRolesBasedOnConfig()
+	th.UpdateUserToNonTeamAdmin(th.BasicUser, th.BasicTeam)
+	th.App.InvalidateAllCaches()
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.TeamSettings.RestrictTeamInvite = model.PERMISSIONS_ALL })
+	utils.SetIsLicensed(true)
+	utils.SetLicense(&model.License{Features: &model.Features{}})
+	utils.License().Features.SetDefaults()
+	th.App.SetDefaultRolesBasedOnConfig()
 	th.LoginBasic()
 
 	// Should work as a regular user.
@@ -896,10 +1361,10 @@ func TestAddTeamMember(t *testing.T) {
 	CheckNoError(t, resp)
 
 	// Reset config and license.
-	*utils.Cfg.TeamSettings.RestrictTeamInvite = restrictTeamInvite
-	utils.IsLicensed = isLicensed
-	utils.License = license
-	utils.SetDefaultRolesBasedOnConfig()
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.TeamSettings.RestrictTeamInvite = restrictTeamInvite })
+	utils.SetIsLicensed(isLicensed)
+	utils.SetLicense(license)
+	th.App.SetDefaultRolesBasedOnConfig()
 	th.LoginBasic()
 
 	// by hash and data
@@ -910,7 +1375,7 @@ func TestAddTeamMember(t *testing.T) {
 	dataObject["id"] = team.Id
 
 	data := model.MapToJson(dataObject)
-	hashed := utils.HashSha256(fmt.Sprintf("%v:%v", data, utils.Cfg.EmailSettings.InviteSalt))
+	hashed := utils.HashSha256(fmt.Sprintf("%v:%v", data, th.App.Config().EmailSettings.InviteSalt))
 
 	tm, resp = Client.AddTeamMemberFromInvite(hashed, data, "")
 	CheckNoError(t, resp)
@@ -940,7 +1405,7 @@ func TestAddTeamMember(t *testing.T) {
 	// expired data of more than 50 hours
 	dataObject["time"] = fmt.Sprintf("%v", model.GetMillis()-1000*60*60*50)
 	data = model.MapToJson(dataObject)
-	hashed = utils.HashSha256(fmt.Sprintf("%v:%v", data, utils.Cfg.EmailSettings.InviteSalt))
+	hashed = utils.HashSha256(fmt.Sprintf("%v:%v", data, th.App.Config().EmailSettings.InviteSalt))
 
 	tm, resp = Client.AddTeamMemberFromInvite(hashed, data, "")
 	CheckBadRequestStatus(t, resp)
@@ -948,7 +1413,7 @@ func TestAddTeamMember(t *testing.T) {
 	// invalid team id
 	dataObject["id"] = GenerateTestId()
 	data = model.MapToJson(dataObject)
-	hashed = utils.HashSha256(fmt.Sprintf("%v:%v", data, utils.Cfg.EmailSettings.InviteSalt))
+	hashed = utils.HashSha256(fmt.Sprintf("%v:%v", data, th.App.Config().EmailSettings.InviteSalt))
 
 	tm, resp = Client.AddTeamMemberFromInvite(hashed, data, "")
 	CheckBadRequestStatus(t, resp)
@@ -981,7 +1446,7 @@ func TestAddTeamMember(t *testing.T) {
 
 func TestAddTeamMembers(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 	team := th.BasicTeam
 	otherUser := th.CreateUser()
@@ -989,7 +1454,7 @@ func TestAddTeamMembers(t *testing.T) {
 		otherUser.Id,
 	}
 
-	if err := app.RemoveUserFromTeam(th.BasicTeam.Id, th.BasicUser2.Id); err != nil {
+	if err := th.App.RemoveUserFromTeam(th.BasicTeam.Id, th.BasicUser2.Id, ""); err != nil {
 		t.Fatalf(err.Error())
 	}
 
@@ -1039,19 +1504,19 @@ func TestAddTeamMembers(t *testing.T) {
 	Client.Logout()
 
 	// Check effects of config and license changes.
-	restrictTeamInvite := *utils.Cfg.TeamSettings.RestrictTeamInvite
-	isLicensed := utils.IsLicensed
-	license := utils.License
+	restrictTeamInvite := *th.App.Config().TeamSettings.RestrictTeamInvite
+	isLicensed := utils.IsLicensed()
+	license := utils.License()
 	defer func() {
-		*utils.Cfg.TeamSettings.RestrictTeamInvite = restrictTeamInvite
-		utils.IsLicensed = isLicensed
-		utils.License = license
-		utils.SetDefaultRolesBasedOnConfig()
+		th.App.UpdateConfig(func(cfg *model.Config) { *cfg.TeamSettings.RestrictTeamInvite = restrictTeamInvite })
+		utils.SetIsLicensed(isLicensed)
+		utils.SetLicense(license)
+		th.App.SetDefaultRolesBasedOnConfig()
 	}()
 
 	// Set the config so that only team admins can add a user to a team.
-	*utils.Cfg.TeamSettings.RestrictTeamInvite = model.PERMISSIONS_TEAM_ADMIN
-	utils.SetDefaultRolesBasedOnConfig()
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.TeamSettings.RestrictTeamInvite = model.PERMISSIONS_TEAM_ADMIN })
+	th.App.SetDefaultRolesBasedOnConfig()
 	th.LoginBasic()
 
 	// Test without the EE license to see that the permission restriction is ignored.
@@ -1059,10 +1524,10 @@ func TestAddTeamMembers(t *testing.T) {
 	CheckNoError(t, resp)
 
 	// Add an EE license.
-	utils.IsLicensed = true
-	utils.License = &model.License{Features: &model.Features{}}
-	utils.License.Features.SetDefaults()
-	utils.SetDefaultRolesBasedOnConfig()
+	utils.SetIsLicensed(true)
+	utils.SetLicense(&model.License{Features: &model.Features{}})
+	utils.License().Features.SetDefaults()
+	th.App.SetDefaultRolesBasedOnConfig()
 	th.LoginBasic()
 
 	// Check that a regular user can't add someone to the team.
@@ -1070,13 +1535,13 @@ func TestAddTeamMembers(t *testing.T) {
 	CheckForbiddenStatus(t, resp)
 
 	// Update user to team admin
-	UpdateUserToTeamAdmin(th.BasicUser, th.BasicTeam)
-	app.InvalidateAllCaches()
-	*utils.Cfg.TeamSettings.RestrictTeamInvite = model.PERMISSIONS_TEAM_ADMIN
-	utils.IsLicensed = true
-	utils.License = &model.License{Features: &model.Features{}}
-	utils.License.Features.SetDefaults()
-	utils.SetDefaultRolesBasedOnConfig()
+	th.UpdateUserToTeamAdmin(th.BasicUser, th.BasicTeam)
+	th.App.InvalidateAllCaches()
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.TeamSettings.RestrictTeamInvite = model.PERMISSIONS_TEAM_ADMIN })
+	utils.SetIsLicensed(true)
+	utils.SetLicense(&model.License{Features: &model.Features{}})
+	utils.License().Features.SetDefaults()
+	th.App.SetDefaultRolesBasedOnConfig()
 	th.LoginBasic()
 
 	// Should work as a team admin.
@@ -1084,8 +1549,8 @@ func TestAddTeamMembers(t *testing.T) {
 	CheckNoError(t, resp)
 
 	// Change permission level to System Admin
-	*utils.Cfg.TeamSettings.RestrictTeamInvite = model.PERMISSIONS_SYSTEM_ADMIN
-	utils.SetDefaultRolesBasedOnConfig()
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.TeamSettings.RestrictTeamInvite = model.PERMISSIONS_SYSTEM_ADMIN })
+	th.App.SetDefaultRolesBasedOnConfig()
 
 	// Should not work as team admin.
 	_, resp = Client.AddTeamMembers(team.Id, userList)
@@ -1096,13 +1561,13 @@ func TestAddTeamMembers(t *testing.T) {
 	CheckNoError(t, resp)
 
 	// Change permission level to All
-	UpdateUserToNonTeamAdmin(th.BasicUser, th.BasicTeam)
-	app.InvalidateAllCaches()
-	*utils.Cfg.TeamSettings.RestrictTeamInvite = model.PERMISSIONS_ALL
-	utils.IsLicensed = true
-	utils.License = &model.License{Features: &model.Features{}}
-	utils.License.Features.SetDefaults()
-	utils.SetDefaultRolesBasedOnConfig()
+	th.UpdateUserToNonTeamAdmin(th.BasicUser, th.BasicTeam)
+	th.App.InvalidateAllCaches()
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.TeamSettings.RestrictTeamInvite = model.PERMISSIONS_ALL })
+	utils.SetIsLicensed(true)
+	utils.SetLicense(&model.License{Features: &model.Features{}})
+	utils.License().Features.SetDefaults()
+	th.App.SetDefaultRolesBasedOnConfig()
 	th.LoginBasic()
 
 	// Should work as a regular user.
@@ -1112,7 +1577,7 @@ func TestAddTeamMembers(t *testing.T) {
 
 func TestRemoveTeamMember(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	pass, resp := Client.RemoveTeamMember(th.BasicTeam.Id, th.BasicUser.Id)
@@ -1143,7 +1608,7 @@ func TestRemoveTeamMember(t *testing.T) {
 
 func TestGetTeamStats(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 	team := th.BasicTeam
 
@@ -1198,7 +1663,7 @@ func TestGetTeamStats(t *testing.T) {
 
 func TestUpdateTeamMemberRoles(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 	SystemAdminClient := th.SystemAdminClient
 
@@ -1240,7 +1705,7 @@ func TestUpdateTeamMemberRoles(t *testing.T) {
 	CheckBadRequestStatus(t, resp)
 
 	// user 1 (team admin) demotes system admin (member of a team)
-	LinkUserToTeam(th.SystemAdminUser, th.BasicTeam)
+	th.LinkUserToTeam(th.SystemAdminUser, th.BasicTeam)
 	_, resp = Client.UpdateTeamMemberRoles(th.BasicTeam.Id, th.SystemAdminUser.Id, TEAM_MEMBER)
 	CheckNoError(t, resp)
 	// Note from API v3
@@ -1276,7 +1741,7 @@ func TestUpdateTeamMemberRoles(t *testing.T) {
 
 func TestGetMyTeamsUnread(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
 	user := th.BasicUser
@@ -1307,7 +1772,7 @@ func TestGetMyTeamsUnread(t *testing.T) {
 
 func TestTeamExists(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 	team := th.BasicTeam
 
@@ -1315,13 +1780,13 @@ func TestTeamExists(t *testing.T) {
 
 	exists, resp := Client.TeamExists(team.Name, "")
 	CheckNoError(t, resp)
-	if exists != true {
+	if !exists {
 		t.Fatal("team should exist")
 	}
 
 	exists, resp = Client.TeamExists("testingteam", "")
 	CheckNoError(t, resp)
-	if exists != false {
+	if exists {
 		t.Fatal("team should not exist")
 	}
 
@@ -1332,7 +1797,7 @@ func TestTeamExists(t *testing.T) {
 
 func TestImportTeam(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 
 	t.Run("ImportTeam", func(t *testing.T) {
 		var data []byte
@@ -1411,7 +1876,7 @@ func TestImportTeam(t *testing.T) {
 
 func TestInviteUsersToTeam(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 
 	user1 := GenerateTestEmail()
 	user2 := GenerateTestEmail()
@@ -1424,11 +1889,11 @@ func TestInviteUsersToTeam(t *testing.T) {
 
 	okMsg, resp := th.SystemAdminClient.InviteUsersToTeam(th.BasicTeam.Id, emailList)
 	CheckNoError(t, resp)
-	if okMsg != true {
+	if !okMsg {
 		t.Fatal("should return true")
 	}
 
-	nameFormat := *utils.Cfg.TeamSettings.TeammateNameDisplay
+	nameFormat := *th.App.Config().TeamSettings.TeammateNameDisplay
 	expectedSubject := "[Mattermost] " + th.SystemAdminUser.GetDisplayName(nameFormat) + " invited you to join " + th.BasicTeam.DisplayName + " Team"
 	//Check if the email was send to the rigth email address
 	for _, email := range emailList {
@@ -1457,13 +1922,13 @@ func TestInviteUsersToTeam(t *testing.T) {
 		}
 	}
 
-	restrictCreationToDomains := utils.Cfg.TeamSettings.RestrictCreationToDomains
+	restrictCreationToDomains := th.App.Config().TeamSettings.RestrictCreationToDomains
 	defer func() {
-		utils.Cfg.TeamSettings.RestrictCreationToDomains = restrictCreationToDomains
+		th.App.UpdateConfig(func(cfg *model.Config) { cfg.TeamSettings.RestrictCreationToDomains = restrictCreationToDomains })
 	}()
-	utils.Cfg.TeamSettings.RestrictCreationToDomains = "@example.com"
+	th.App.UpdateConfig(func(cfg *model.Config) { cfg.TeamSettings.RestrictCreationToDomains = "@example.com" })
 
-	err := app.InviteNewUsersToTeam(emailList, th.BasicTeam.Id, th.BasicUser.Id)
+	err := th.App.InviteNewUsersToTeam(emailList, th.BasicTeam.Id, th.BasicUser.Id)
 
 	if err == nil {
 		t.Fatal("Adding users with non-restricted domains was allowed")
@@ -1476,7 +1941,7 @@ func TestInviteUsersToTeam(t *testing.T) {
 
 func TestGetTeamInviteInfo(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 	team := th.BasicTeam
 

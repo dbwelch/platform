@@ -13,13 +13,13 @@ import (
 	l4g "github.com/alecthomas/log4go"
 	goi18n "github.com/nicksnyder/go-i18n/i18n"
 
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/einterfaces"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/app"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
 type Context struct {
+	App           *app.App
 	Session       model.Session
 	Params        *ApiParams
 	Err           *model.AppError
@@ -30,8 +30,9 @@ type Context struct {
 	siteURLHeader string
 }
 
-func ApiHandler(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
+func (api *API) ApiHandler(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
 	return &handler{
+		app:            api.App,
 		handleFunc:     h,
 		requireSession: false,
 		trustRequester: false,
@@ -39,8 +40,9 @@ func ApiHandler(h func(*Context, http.ResponseWriter, *http.Request)) http.Handl
 	}
 }
 
-func ApiSessionRequired(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
+func (api *API) ApiSessionRequired(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
 	return &handler{
+		app:            api.App,
 		handleFunc:     h,
 		requireSession: true,
 		trustRequester: false,
@@ -48,8 +50,9 @@ func ApiSessionRequired(h func(*Context, http.ResponseWriter, *http.Request)) ht
 	}
 }
 
-func ApiSessionRequiredMfa(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
+func (api *API) ApiSessionRequiredMfa(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
 	return &handler{
+		app:            api.App,
 		handleFunc:     h,
 		requireSession: true,
 		trustRequester: false,
@@ -57,8 +60,9 @@ func ApiSessionRequiredMfa(h func(*Context, http.ResponseWriter, *http.Request))
 	}
 }
 
-func ApiHandlerTrustRequester(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
+func (api *API) ApiHandlerTrustRequester(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
 	return &handler{
+		app:            api.App,
 		handleFunc:     h,
 		requireSession: false,
 		trustRequester: true,
@@ -66,8 +70,9 @@ func ApiHandlerTrustRequester(h func(*Context, http.ResponseWriter, *http.Reques
 	}
 }
 
-func ApiSessionRequiredTrustRequester(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
+func (api *API) ApiSessionRequiredTrustRequester(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
 	return &handler{
+		app:            api.App,
 		handleFunc:     h,
 		requireSession: true,
 		trustRequester: true,
@@ -76,6 +81,7 @@ func ApiSessionRequiredTrustRequester(h func(*Context, http.ResponseWriter, *htt
 }
 
 type handler struct {
+	app            *app.App
 	handleFunc     func(*Context, http.ResponseWriter, *http.Request)
 	requireSession bool
 	trustRequester bool
@@ -87,6 +93,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	l4g.Debug("%v - %v", r.Method, r.URL.Path)
 
 	c := &Context{}
+	c.App = h.app
 	c.T, _ = utils.GetTranslationsAndLocale(w, r)
 	c.RequestId = model.NewId()
 	c.IpAddress = utils.GetIpAddress(r)
@@ -113,7 +120,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 			if h.requireSession && !h.trustRequester {
 				if r.Header.Get(model.HEADER_REQUESTED_WITH) != model.HEADER_REQUESTED_WITH_XML {
-					c.Err = model.NewLocAppError("ServeHTTP", "api.context.session_expired.app_error", nil, "token="+token+" Appears to be a CSRF attempt")
+					c.Err = model.NewAppError("ServeHTTP", "api.context.session_expired.app_error", nil, "token="+token+" Appears to be a CSRF attempt", http.StatusUnauthorized)
 					token = ""
 				}
 			}
@@ -129,7 +136,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	c.SetSiteURLHeader(app.GetProtocol(r) + "://" + r.Host)
 
 	w.Header().Set(model.HEADER_REQUEST_ID, c.RequestId)
-	w.Header().Set(model.HEADER_VERSION_ID, fmt.Sprintf("%v.%v.%v.%v", model.CurrentVersion, model.BuildNumber, utils.ClientCfgHash, utils.IsLicensed))
+	w.Header().Set(model.HEADER_VERSION_ID, fmt.Sprintf("%v.%v.%v.%v", model.CurrentVersion, model.BuildNumber, utils.ClientCfgHash, utils.IsLicensed()))
 
 	w.Header().Set("Content-Type", "application/json")
 
@@ -138,18 +145,16 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(token) != 0 {
-		session, err := app.GetSession(token)
+		session, err := c.App.GetSession(token)
 
 		if err != nil {
-			l4g.Error(utils.T("api.context.invalid_session.error"), err.Error())
+			l4g.Info(utils.T("api.context.invalid_session.error"), err.Error())
 			c.RemoveSessionCookie(w, r)
 			if h.requireSession {
-				c.Err = model.NewLocAppError("ServeHTTP", "api.context.session_expired.app_error", nil, "token="+token)
-				c.Err.StatusCode = http.StatusUnauthorized
+				c.Err = model.NewAppError("ServeHTTP", "api.context.session_expired.app_error", nil, "token="+token, http.StatusUnauthorized)
 			}
 		} else if !session.IsOAuth && isTokenFromQueryString {
-			c.Err = model.NewLocAppError("ServeHTTP", "api.context.token_provided.app_error", nil, "token="+token)
-			c.Err.StatusCode = http.StatusUnauthorized
+			c.Err = model.NewAppError("ServeHTTP", "api.context.token_provided.app_error", nil, "token="+token, http.StatusUnauthorized)
 		} else {
 			c.Session = *session
 		}
@@ -173,35 +178,41 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if c.Err != nil {
 		c.Err.Translate(c.T)
 		c.Err.RequestId = c.RequestId
-		c.LogError(c.Err)
+
+		if c.Err.Id == "api.context.session_expired.app_error" {
+			c.LogInfo(c.Err)
+		} else {
+			c.LogError(c.Err)
+		}
+
 		c.Err.Where = r.URL.Path
 
 		// Block out detailed error when not in developer mode
-		if !*utils.Cfg.ServiceSettings.EnableDeveloper {
+		if !*c.App.Config().ServiceSettings.EnableDeveloper {
 			c.Err.DetailedError = ""
 		}
 
 		w.WriteHeader(c.Err.StatusCode)
 		w.Write([]byte(c.Err.ToJson()))
 
-		if einterfaces.GetMetricsInterface() != nil {
-			einterfaces.GetMetricsInterface().IncrementHttpError()
+		if c.App.Metrics != nil {
+			c.App.Metrics.IncrementHttpError()
 		}
 	}
 
-	if einterfaces.GetMetricsInterface() != nil {
-		einterfaces.GetMetricsInterface().IncrementHttpRequest()
+	if c.App.Metrics != nil {
+		c.App.Metrics.IncrementHttpRequest()
 
 		if r.URL.Path != model.API_URL_SUFFIX+"/websocket" {
 			elapsed := float64(time.Since(now)) / float64(time.Second)
-			einterfaces.GetMetricsInterface().ObserveHttpRequestDuration(elapsed)
+			c.App.Metrics.ObserveHttpRequestDuration(elapsed)
 		}
 	}
 }
 
 func (c *Context) LogAudit(extraInfo string) {
 	audit := &model.Audit{UserId: c.Session.UserId, IpAddress: c.IpAddress, Action: c.Path, ExtraInfo: extraInfo, SessionId: c.Session.Id}
-	if r := <-app.Srv.Store.Audit().Save(audit); r.Err != nil {
+	if r := <-c.App.Srv.Store.Audit().Save(audit); r.Err != nil {
 		c.LogError(r.Err)
 	}
 }
@@ -213,7 +224,7 @@ func (c *Context) LogAuditWithUserId(userId, extraInfo string) {
 	}
 
 	audit := &model.Audit{UserId: userId, IpAddress: c.IpAddress, Action: c.Path, ExtraInfo: extraInfo, SessionId: c.Session.Id}
-	if r := <-app.Srv.Store.Audit().Save(audit); r.Err != nil {
+	if r := <-c.App.Srv.Store.Audit().Save(audit); r.Err != nil {
 		c.LogError(r.Err)
 	}
 }
@@ -229,17 +240,22 @@ func (c *Context) LogError(err *model.AppError) {
 	}
 }
 
+func (c *Context) LogInfo(err *model.AppError) {
+	l4g.Info(utils.TDefault("api.context.log.error"), c.Path, err.Where, err.StatusCode,
+		c.RequestId, c.Session.UserId, c.IpAddress, err.SystemMessage(utils.TDefault), err.DetailedError)
+}
+
 func (c *Context) LogDebug(err *model.AppError) {
 	l4g.Debug(utils.TDefault("api.context.log.error"), c.Path, err.Where, err.StatusCode,
 		c.RequestId, c.Session.UserId, c.IpAddress, err.SystemMessage(utils.TDefault), err.DetailedError)
 }
 
 func (c *Context) IsSystemAdmin() bool {
-	return app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM)
+	return c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM)
 }
 
 func (c *Context) SessionRequired() {
-	if !*utils.Cfg.ServiceSettings.EnableUserAccessTokens && c.Session.Props[model.SESSION_PROP_TYPE] == model.SESSION_TYPE_USER_ACCESS_TOKEN {
+	if !*c.App.Config().ServiceSettings.EnableUserAccessTokens && c.Session.Props[model.SESSION_PROP_TYPE] == model.SESSION_TYPE_USER_ACCESS_TOKEN {
 		c.Err = model.NewAppError("", "api.context.session_expired.app_error", nil, "UserAccessToken", http.StatusUnauthorized)
 		return
 	}
@@ -252,7 +268,7 @@ func (c *Context) SessionRequired() {
 
 func (c *Context) MfaRequired() {
 	// Must be licensed for MFA and have it configured for enforcement
-	if !utils.IsLicensed || !*utils.License.Features.MFA || !*utils.Cfg.ServiceSettings.EnableMultifactorAuthentication || !*utils.Cfg.ServiceSettings.EnforceMultifactorAuthentication {
+	if !utils.IsLicensed() || !*utils.License().Features.MFA || !*c.App.Config().ServiceSettings.EnableMultifactorAuthentication || !*c.App.Config().ServiceSettings.EnforceMultifactorAuthentication {
 		return
 	}
 
@@ -261,9 +277,8 @@ func (c *Context) MfaRequired() {
 		return
 	}
 
-	if user, err := app.GetUser(c.Session.UserId); err != nil {
-		c.Err = model.NewLocAppError("", "api.context.session_expired.app_error", nil, "MfaRequired")
-		c.Err.StatusCode = http.StatusUnauthorized
+	if user, err := c.App.GetUser(c.Session.UserId); err != nil {
+		c.Err = model.NewAppError("", "api.context.session_expired.app_error", nil, "MfaRequired", http.StatusUnauthorized)
 		return
 	} else {
 		// Only required for email and ldap accounts
@@ -305,20 +320,37 @@ func (c *Context) SetInvalidUrlParam(parameter string) {
 	c.Err = NewInvalidUrlParamError(parameter)
 }
 
+func (c *Context) HandleEtag(etag string, routeName string, w http.ResponseWriter, r *http.Request) bool {
+	metrics := c.App.Metrics
+	if et := r.Header.Get(model.HEADER_ETAG_CLIENT); len(etag) > 0 {
+		if et == etag {
+			w.Header().Set(model.HEADER_ETAG_SERVER, etag)
+			w.WriteHeader(http.StatusNotModified)
+			if metrics != nil {
+				metrics.IncrementEtagHitCounter(routeName)
+			}
+			return true
+		}
+	}
+
+	if metrics != nil {
+		metrics.IncrementEtagMissCounter(routeName)
+	}
+
+	return false
+}
+
 func NewInvalidParamError(parameter string) *model.AppError {
-	err := model.NewLocAppError("Context", "api.context.invalid_body_param.app_error", map[string]interface{}{"Name": parameter}, "")
-	err.StatusCode = http.StatusBadRequest
+	err := model.NewAppError("Context", "api.context.invalid_body_param.app_error", map[string]interface{}{"Name": parameter}, "", http.StatusBadRequest)
 	return err
 }
 func NewInvalidUrlParamError(parameter string) *model.AppError {
-	err := model.NewLocAppError("Context", "api.context.invalid_url_param.app_error", map[string]interface{}{"Name": parameter}, "")
-	err.StatusCode = http.StatusBadRequest
+	err := model.NewAppError("Context", "api.context.invalid_url_param.app_error", map[string]interface{}{"Name": parameter}, "", http.StatusBadRequest)
 	return err
 }
 
 func (c *Context) SetPermissionError(permission *model.Permission) {
-	c.Err = model.NewLocAppError("Permissions", "api.context.permissions.app_error", nil, "userId="+c.Session.UserId+", "+"permission="+permission.Id)
-	c.Err.StatusCode = http.StatusForbidden
+	c.Err = model.NewAppError("Permissions", "api.context.permissions.app_error", nil, "userId="+c.Session.UserId+", "+"permission="+permission.Id, http.StatusForbidden)
 }
 
 func (c *Context) SetSiteURLHeader(url string) {
@@ -429,6 +461,18 @@ func (c *Context) RequireFileId() *Context {
 
 	if len(c.Params.FileId) != 26 {
 		c.SetInvalidUrlParam("file_id")
+	}
+
+	return c
+}
+
+func (c *Context) RequirePluginId() *Context {
+	if c.Err != nil {
+		return c
+	}
+
+	if len(c.Params.PluginId) == 0 {
+		c.SetInvalidUrlParam("plugin_id")
 	}
 
 	return c
@@ -583,6 +627,17 @@ func (c *Context) RequireJobType() *Context {
 
 	if len(c.Params.JobType) == 0 || len(c.Params.JobType) > 32 {
 		c.SetInvalidUrlParam("job_type")
+	}
+	return c
+}
+
+func (c *Context) RequireActionId() *Context {
+	if c.Err != nil {
+		return c
+	}
+
+	if len(c.Params.ActionId) != 26 {
+		c.SetInvalidUrlParam("action_id")
 	}
 	return c
 }

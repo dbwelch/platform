@@ -1,38 +1,41 @@
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See License.txt for license information.
+
 package main
 
 import (
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/app"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 	"github.com/spf13/cobra"
 )
 
-func initDBCommandContextCobra(cmd *cobra.Command) error {
+func initDBCommandContextCobra(cmd *cobra.Command) (*app.App, error) {
 	config, err := cmd.Flags().GetString("config")
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	if err := initDBCommandContext(config); err != nil {
+	a, err := initDBCommandContext(config)
+	if err != nil {
 		// Returning an error just prints the usage message, so actually panic
 		panic(err)
 	}
 
-	return nil
+	return a, nil
 }
 
-func initDBCommandContext(configFileLocation string) error {
+func initDBCommandContext(configFileLocation string) (*app.App, error) {
 	if err := utils.InitAndLoadConfig(configFileLocation); err != nil {
-		return err
+		return nil, err
 	}
 
 	utils.ConfigureCmdLineLog()
 
-	app.NewServer()
-	app.InitStores()
+	a := app.New(app.ConfigFile(configFileLocation))
 	if model.BuildEnterpriseReady == "true" {
-		app.LoadLicense()
+		a.LoadLicense()
 	}
 
-	return nil
+	return a, nil
 }

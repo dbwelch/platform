@@ -125,11 +125,11 @@
   },
   {
     "id": "api.admin.upload_brand_image.storage.app_error",
-    "translation": "No se pudo subir la imagen. El almacenamiento de imagenes no está configurado."
+    "translation": "No se pudo cargar la imagen. El almacenamiento de imagenes no está configurado."
   },
   {
     "id": "api.admin.upload_brand_image.too_large.app_error",
-    "translation": "No se pudo subir el archivo. El archivo es muy grande."
+    "translation": "No se pudo cargar el archivo. El archivo es muy grande."
   },
   {
     "id": "api.api.init.parsing_templates.debug",
@@ -532,6 +532,98 @@
     "translation": "El encabezado del canal fue actualizado correctamente."
   },
   {
+    "id": "api.command_channel_purpose.channel.app_error",
+    "translation": "Error al recuperar el canal actual."
+  },
+  {
+    "id": "api.command_channel_purpose.desc",
+    "translation": "Editar el propósito del canal"
+  },
+  {
+    "id": "api.command_channel_purpose.direct_group.app_error",
+    "translation": "No se puede establecer el propósito en los canales de mensaje directo. Utiliza /header para establecer el encabezado en su lugar."
+  },
+  {
+    "id": "api.command_channel_purpose.hint",
+    "translation": "[texto]"
+  },
+  {
+    "id": "api.command_channel_purpose.message.app_error",
+    "translation": "Un mensaje debe ser proporcionado con el comando /purpose."
+  },
+  {
+    "id": "api.command_channel_purpose.name",
+    "translation": "propósito"
+  },
+  {
+    "id": "api.command_channel_purpose.permission.app_error",
+    "translation": "No tienes los permisos adecuados para modificar el propósito del canal."
+  },
+  {
+    "id": "api.command_channel_purpose.update_channel.app_error",
+    "translation": "Error al actualizar el canal actual."
+  },
+  {
+    "id": "api.command_channel_rename.channel.app_error",
+    "translation": "Error al recuperar el canal actual."
+  },
+  {
+    "id": "api.command_channel_rename.desc",
+    "translation": "Renombrar el canal"
+  },
+  {
+    "id": "api.command_channel_rename.direct_group.app_error",
+    "translation": "No puedes renombrar un canal de mensajes directos"
+  },
+  {
+    "id": "api.command_channel_rename.hint",
+    "translation": "[texto]"
+  },
+  {
+    "id": "api.command_channel_rename.message.app_error",
+    "translation": "Un mensaje debe ser proporcionado con el comando /rename."
+  },
+  {
+    "id": "api.command_channel_rename.name",
+    "translation": "rename"
+  },
+  {
+    "id": "api.command_channel_rename.permission.app_error",
+    "translation": "No tienes los permisos adecuados para renombrar el canal."
+  },
+  {
+    "id": "api.command_channel_rename.too_long.app_error",
+    "translation": "Nombre del canal debe ser de {{.Length}} caracteres o menos"
+  },
+  {
+    "id": "api.command_channel_rename.too_short.app_error",
+    "translation": "Nombre del canal debe ser de {{.Length}} o más caracteres"
+  },
+  {
+    "id": "api.command_channel_rename.update_channel.app_error",
+    "translation": "Error al actualizar el canal actual."
+  },
+  {
+    "id": "api.command_channel_rename.update_channel.success",
+    "translation": "El nombre del canal fue actualizado correctamente."
+  },
+  {
+    "id": "api.command_code.desc",
+    "translation": "Mostrar el texto como un bloque de código"
+  },
+  {
+    "id": "api.command_code.hint",
+    "translation": "[texto]"
+  },
+  {
+    "id": "api.command_code.message.app_error",
+    "translation": "Un mensaje debe ser proporcionado con el comando /code."
+  },
+  {
+    "id": "api.command_code.name",
+    "translation": "código"
+  },
+  {
     "id": "api.command_collapse.desc",
     "translation": "Activar auto-colapso de previsualizaciones de imagen"
   },
@@ -542,6 +634,26 @@
   {
     "id": "api.command_collapse.success",
     "translation": "Los vínculos de imágenes se colapsarán de forma predeterminada"
+  },
+  {
+    "id": "api.command_dnd.desc",
+    "translation": "No molestar desactiva notificaciones móviles y de escritorio."
+  },
+  {
+    "id": "api.command_dnd.disabled",
+    "translation": "No Molestar está deshabilitado."
+  },
+  {
+    "id": "api.command_dnd.error",
+    "translation": "Error al recuperar el status del usuario."
+  },
+  {
+    "id": "api.command_dnd.name",
+    "translation": "dnd"
+  },
+  {
+    "id": "api.command_dnd.success",
+    "translation": "No Molestar está activado. No recibirás notificaciones móviles o de escritorio hasta que No Molestar esté apagado."
   },
   {
     "id": "api.command_echo.create.app_error",
@@ -588,6 +700,57 @@
     "translation": "Se ha producido un error durante la expansión de las previsualizaciones"
   },
   {
+    "id": "api.command_groupmsg.desc",
+    "translation": "Envía un Mensaje de Grupo a los usuarios especificados"
+  },
+  {
+    "id": "api.command_groupmsg.fail.app_error",
+    "translation": "Ha ocurrido un error mientras se enviaba el mensaje a los usuarios."
+  },
+  {
+    "id": "api.command_groupmsg.group_fail.app_error",
+    "translation": "Ha ocurrido un error mientras se creaba el mensaje de grupo."
+  },
+  {
+    "id": "api.command_groupmsg.hint",
+    "translation": "@[nombre de usuario 1], @[nombre de usuario 2] 'mensaje'"
+  },
+  {
+    "id": "api.command_groupmsg.invalid_user.app_error",
+    "translation": {
+      "one": "No pudimos encontrar al usuario: {{.Users}}",
+      "other": "No pudimos encontrar a los usuarios: {{.Users}}"
+    }
+  },
+  {
+    "id": "api.command_groupmsg.invalid_users.app_error",
+    "translation": "No pudimos encontrar los usuarios. %s"
+  },
+  {
+    "id": "api.command_groupmsg.list.app_error",
+    "translation": "Ha ocurrido un error mientras se listaban los usuarios."
+  },
+  {
+    "id": "api.command_groupmsg.max_users.app_error",
+    "translation": "Los mensajes de Grupo están limitados a un máximo de {{.MaxUsers}} usuarios."
+  },
+  {
+    "id": "api.command_groupmsg.min_users.app_error",
+    "translation": "Los mensajes de Grupo están limitados a un mínimo de {{.MinUsers}} usuarios."
+  },
+  {
+    "id": "api.command_groupmsg.missing.app_error",
+    "translation": "No pudimos encontrar el usuario"
+  },
+  {
+    "id": "api.command_groupmsg.name",
+    "translation": "mensaje"
+  },
+  {
+    "id": "api.command_groupmsg.success",
+    "translation": "Mensaje enviado a los usuarios."
+  },
+  {
     "id": "api.command_help.desc",
     "translation": "Abrir la página de ayuda de Mattermost"
   },
@@ -622,6 +785,34 @@
   {
     "id": "api.command_join.success",
     "translation": "Te uniste al canal."
+  },
+  {
+    "id": "api.command_kick.name",
+    "translation": "patear"
+  },
+  {
+    "id": "api.command_leave.desc",
+    "translation": "Abandonar el canal actual"
+  },
+  {
+    "id": "api.command_leave.fail.app_error",
+    "translation": "Ocurrió un error al abandonar al canal."
+  },
+  {
+    "id": "api.command_leave.list.app_error",
+    "translation": "Ocurrió un error al listar los canales."
+  },
+  {
+    "id": "api.command_leave.missing.app_error",
+    "translation": "No pudimos encontrar el canal"
+  },
+  {
+    "id": "api.command_leave.name",
+    "translation": "leave"
+  },
+  {
+    "id": "api.command_leave.success",
+    "translation": "Abandonaste el canal."
   },
   {
     "id": "api.command_logout.desc",
@@ -708,6 +899,38 @@
     "translation": "abrir"
   },
   {
+    "id": "api.command_remove.desc",
+    "translation": "Remueve a un miembro del canal"
+  },
+  {
+    "id": "api.command_remove.direct_group.app_error",
+    "translation": "No se puede remover a alguien de un canal de mensajes directos."
+  },
+  {
+    "id": "api.command_remove.hint",
+    "translation": "@[nombre de usuario]"
+  },
+  {
+    "id": "api.command_remove.message.app_error",
+    "translation": "Un mensaje debe ser proporcionado con el comando /remove o /kick."
+  },
+  {
+    "id": "api.command_remove.missing.app_error",
+    "translation": "No pudimos encontrar el usuario"
+  },
+  {
+    "id": "api.command_remove.name",
+    "translation": "remover"
+  },
+  {
+    "id": "api.command_remove.permission.app_error",
+    "translation": "No tienes los permisos adecuados para remover al miembro."
+  },
+  {
+    "id": "api.command_remove.user_not_in_channel",
+    "translation": "{{.Username}} no es un miembro de este canal."
+  },
+  {
     "id": "api.command_search.desc",
     "translation": "Buscar texto en mensajes"
   },
@@ -736,156 +959,16 @@
     "translation": "El comando de configuración no es compatible con tu dispositivo"
   },
   {
-    "id": "api.command_shortcuts.browser.channel_next",
-    "translation": "{{.ChannelNextCmd}}: canal Siguiente en el historial\n"
-  },
-  {
-    "id": "api.command_shortcuts.browser.channel_next.cmd",
-    "translation": "ALT+DER"
-  },
-  {
-    "id": "api.command_shortcuts.browser.channel_next.cmd_mac",
-    "translation": "CMD+]"
-  },
-  {
-    "id": "api.command_shortcuts.browser.channel_prev",
-    "translation": "{{.ChannelPrevCmd}}: canal Anterior en el historial\n"
-  },
-  {
-    "id": "api.command_shortcuts.browser.channel_prev.cmd",
-    "translation": "ALT+IZQ"
-  },
-  {
-    "id": "api.command_shortcuts.browser.channel_prev.cmd_mac",
-    "translation": "CMD+["
-  },
-  {
-    "id": "api.command_shortcuts.browser.font_decrease",
-    "translation": "{{.CmdOrCtrl}}+MENOS: Disminuir tamaño de la fuente (alejar)\n"
-  },
-  {
-    "id": "api.command_shortcuts.browser.font_increase",
-    "translation": "{{.CmdOrCtrl}}+MAS: Aumentar tamaño de la fuente (acercar)\n"
-  },
-  {
-    "id": "api.command_shortcuts.browser.header",
-    "translation": "#### Comandos incluidos en el Navegador\n\n"
-  },
-  {
-    "id": "api.command_shortcuts.browser.highlight_next",
-    "translation": "MAYUS+ABAJO (en el cuadro de texto): Selecciona el texto de las linea siguiente\n"
-  },
-  {
-    "id": "api.command_shortcuts.browser.highlight_prev",
-    "translation": "MAYUS+ARRIBA (en el cuadro de texto): Selecciona el texto de las línea anterior\n"
-  },
-  {
-    "id": "api.command_shortcuts.browser.newline",
-    "translation": "MAYUS+RETORNO (en el cuadro de texto): Crea una nueva línea\n"
-  },
-  {
-    "id": "api.command_shortcuts.cmd",
-    "translation": "CMD"
-  },
-  {
-    "id": "api.command_shortcuts.ctrl",
-    "translation": "CTRL"
-  },
-  {
     "id": "api.command_shortcuts.desc",
     "translation": "Muestra una lista de los accesos rápidos de teclado"
-  },
-  {
-    "id": "api.command_shortcuts.files.header",
-    "translation": "#### Archivos\n\n"
-  },
-  {
-    "id": "api.command_shortcuts.files.upload",
-    "translation": "{{.CmdOrCtrl}}+U: Subir archivo(s)\n\n"
-  },
-  {
-    "id": "api.command_shortcuts.header",
-    "translation": "### Atajos de Teclado\n\n"
-  },
-  {
-    "id": "api.command_shortcuts.msgs.comp_channel",
-    "translation": "~[carácter]+TAB: Auto completa el canal que comience por [carácter]\n"
-  },
-  {
-    "id": "api.command_shortcuts.msgs.comp_emoji",
-    "translation": ":[carácter]+TAB: Auto completa el emoticon que comience por [carácter]\n\n"
-  },
-  {
-    "id": "api.command_shortcuts.msgs.comp_username",
-    "translation": "@[carácter]+TAB: Auto completa @nombre que comience por [carácter]\n"
-  },
-  {
-    "id": "api.command_shortcuts.msgs.edit",
-    "translation": "ARRIBA (con el cuadro de texto vacío): Edita el último mensaje en el canal actual\n"
-  },
-  {
-    "id": "api.command_shortcuts.msgs.header",
-    "translation": "#### Mensajes\n\n"
-  },
-  {
-    "id": "api.command_shortcuts.msgs.mark_as_read",
-    "translation": "ESC: Marca todos los mensajes como leídos en el canal actual\n"
-  },
-  {
-    "id": "api.command_shortcuts.msgs.reply",
-    "translation": "MAYÚS+ARRIBA (en el campo de entrada vacío): Responder al mensaje más reciente en el canal actual\n"
-  },
-  {
-    "id": "api.command_shortcuts.msgs.reprint_next",
-    "translation": "{{.CmdOrCtrl}}+ABAJO (con el cuadro de texto vacío): Reimprime el siguiente mensaje o comando de barra que ingresaste\n"
-  },
-  {
-    "id": "api.command_shortcuts.msgs.reprint_prev",
-    "translation": "{{.CmdOrCtrl}}+ARRIBA (con el cuadro de texto vacío): Reimprime el último mensaje o comando de barra que ingresaste\n"
   },
   {
     "id": "api.command_shortcuts.name",
     "translation": "accesos rápidos de teclado"
   },
   {
-    "id": "api.command_shortcuts.nav.direct_messages_menu",
-    "translation": "{{.CmdOrCtrl}}+MAYÚS+K: Abre el menú de mensajes directos\n"
-  },
-  {
-    "id": "api.command_shortcuts.nav.header",
-    "translation": "#### Navegación\n\n"
-  },
-  {
-    "id": "api.command_shortcuts.nav.next",
-    "translation": "ALT+ABAJO: Canal o mensaje directo siguiente en la barra lateral izquierda\n"
-  },
-  {
-    "id": "api.command_shortcuts.nav.prev",
-    "translation": "ALT+ARRIBA: Canal o mensaje directo previo en la barra lateral izquierda\n"
-  },
-  {
-    "id": "api.command_shortcuts.nav.recent_mentions",
-    "translation": "{{.CmdOrCtrl}}+MAYUS+M: Abre las menciones recientes\n\n"
-  },
-  {
-    "id": "api.command_shortcuts.nav.settings",
-    "translation": "{{.CmdOrCtrl}}+MAYUS+A: Abre la configuración de la cuenta\n"
-  },
-  {
-    "id": "api.command_shortcuts.nav.switcher",
-    "translation": "{{.CmdOrCtrl}}+K: Abre un cuadro de dialogo para cambiar rápidamente de canal\n"
-  },
-  {
-    "id": "api.command_shortcuts.nav.switcher_team",
-    "translation": "{{.CmdOrCtrl}}+K: Abre un dialogo para cambiar rápidamente de canal\n"
-  },
-  {
-    "id": "api.command_shortcuts.nav.unread_next",
-    "translation": "ALT+MAYUS+ABAJO: Canal o mensaje directo siguiente en la barra lateral izquierda con mensajes no leídos\n"
-  },
-  {
-    "id": "api.command_shortcuts.nav.unread_prev",
-    "translation": "ALT+MAYUS+ARRIBA: Canal o mensaje directo previo en la barra lateral izquierda con mensajes no leídos\n"
+    "id": "api.command_shortcuts.unsupported.app_error",
+    "translation": "El comando de accesos rápidos no es compatible con tu dispositivo"
   },
   {
     "id": "api.command_shrug.desc",
@@ -901,7 +984,7 @@
   },
   {
     "id": "api.compliance.init.debug",
-    "translation": "Inicializando rutas del API de cumplimiento"
+    "translation": "Inicializando rutas del API de conformidad"
   },
   {
     "id": "api.config.client.old_format.app_error",
@@ -996,10 +1079,6 @@
     "translation": "El trabajo de correos electrónicos por lotes se ejecutó. %v / los usuario(s) todavía tienen notificaciones pendientes."
   },
   {
-    "id": "api.email_batching.check_pending_emails.status.app_error",
-    "translation": "No se puede encontrar el estado del recipiente para la notificación de correos electrónicos por lotes"
-  },
-  {
     "id": "api.email_batching.render_batched_post.channel.app_error",
     "translation": "No se puede encontrar el canal del mensaje para la notificación de correos electrónicos por lote"
   },
@@ -1009,7 +1088,7 @@
   },
   {
     "id": "api.email_batching.render_batched_post.direct_message",
-    "translation": "Mensaje Directo"
+    "translation": "Mensaje Directo de "
   },
   {
     "id": "api.email_batching.render_batched_post.go_to_post",
@@ -1017,7 +1096,11 @@
   },
   {
     "id": "api.email_batching.render_batched_post.group_message",
-    "translation": "Mensaje de Grupo"
+    "translation": "Mensaje Grupal de "
+  },
+  {
+    "id": "api.email_batching.render_batched_post.notification",
+    "translation": "Notificación de "
   },
   {
     "id": "api.email_batching.render_batched_post.sender.app_error",
@@ -1026,8 +1109,8 @@
   {
     "id": "api.email_batching.send_batched_email_notification.body_text",
     "translation": {
-      "one": "Tienes un mensaje nuevo.",
-      "other": "Tienes {{.Count}} mensajes nuevos."
+      "one": "Tienes una nueva notificación",
+      "other": "Tienes {{.Count}} nuevas notificaciones."
     }
   },
   {
@@ -1179,11 +1262,11 @@
   },
   {
     "id": "api.file.handle_images_forget.upload_preview.error",
-    "translation": "Error al subir la vista previa ruta=%v err=%v"
+    "translation": "Error al cargar la vista previa ruta=%v err=%v"
   },
   {
     "id": "api.file.handle_images_forget.upload_thumb.error",
-    "translation": "Error al subir la miniatura ruta=%v err=%v"
+    "translation": "Error al cargar la miniatura ruta=%v err=%v"
   },
   {
     "id": "api.file.init.debug",
@@ -1250,6 +1333,10 @@
     "translation": "No ha sido configurado apropiadamente el almacenamiento. Por favor configuralo para utilizar ya sea S3 o almacenamiento local."
   },
   {
+    "id": "api.file.move_file.copy_within_s3.app_error",
+    "translation": "No se puede copiar el archivo dentro de S3."
+  },
+  {
     "id": "api.file.move_file.delete_from_s3.app_error",
     "translation": "No se pudo eliminar el archivo del S3."
   },
@@ -1260,22 +1347,6 @@
   {
     "id": "api.file.move_file.rename.app_error",
     "translation": "No se pudo mover el archivo localmente."
-  },
-  {
-    "id": "api.file.open_file_write_stream.configured.app_error",
-    "translation": "El almacenamiento de archivos no ha sido configurado apropiadamente. Por favor configuralo ya sea para S3 o para almacenamiento en el servidor local."
-  },
-  {
-    "id": "api.file.open_file_write_stream.creating_dir.app_error",
-    "translation": "Se encontró un error al crear el directorio para el nuevo archivo"
-  },
-  {
-    "id": "api.file.open_file_write_stream.local_server.app_error",
-    "translation": "Se encontró un error al escribir en el almacenamiento del servidor local"
-  },
-  {
-    "id": "api.file.open_file_write_stream.s3.app_error",
-    "translation": "S3 no está soportado."
   },
   {
     "id": "api.file.read_file.configured.app_error",
@@ -1291,19 +1362,19 @@
   },
   {
     "id": "api.file.upload_file.bad_parse.app_error",
-    "translation": "No se puedo subir el archivo. El encabezado no puede ser analizado."
+    "translation": "No se puedo cargar el archivo. El encabezado no puede ser analizado."
   },
   {
     "id": "api.file.upload_file.large_image.app_error",
-    "translation": "No se pudo subir el archivo que supera las dimensiones máximas: {{.Filename}}"
+    "translation": "No se pudo cargar el archivo que supera las dimensiones máximas: {{.Filename}}"
   },
   {
     "id": "api.file.upload_file.storage.app_error",
-    "translation": "No se puede subir el archivo. El almacenamiento de imágenes no está configurado."
+    "translation": "No se puede cargar el archivo. El almacenamiento de imágenes no está configurado."
   },
   {
     "id": "api.file.upload_file.too_large.app_error",
-    "translation": "No se pudo subir el archivo. El archivo es demasiado grande."
+    "translation": "No se pudo cargar el archivo. El archivo es demasiado grande."
   },
   {
     "id": "api.file.write_file.configured.app_error",
@@ -1438,10 +1509,6 @@
     "translation": "Falta uno o más parametros: response_type, client_id, o redirect_uri"
   },
   {
-    "id": "api.oauth.complete_oauth.missing_code.app_error",
-    "translation": "El proveedor de servicios {{.servicio}} no proporcionó un código de autorización en la URL de redirección.\n\nPara [Google Apps](https://docs.mattermost.com/deployment/sso-google.html) asegúrate de que el administrador ha habilitado Google+ API.\n\nPara [Office 365](https://docs.mattermost.com/deployment/sso-office.html) asegúrate de que el administrador de tu organización en Microsoft ha habilitado la aplicación de Mattermost.\n\nPara [GitLab](https://docs.mattermost.com/deployment/sso-gitlab.html) por favor, asegúrate de haber seguido las instrucciones de instalación.\n\nSi has revisado lo anterior, y sigue teniendo problemas con la configuración, puedes publicar en nuestro foro de [Solución de problemas](https://forum.mattermost.org/c/general/trouble-shoot), donde estaremos encantados de ayudar con problemas que ocurran durante la instalación."
-  },
-  {
     "id": "api.oauth.delete.permissions.app_error",
     "translation": "Permisos inapropiados para eliminar la App de OAuth2"
   },
@@ -1550,12 +1617,32 @@
     "translation": "Inicializando rutas del API para el protocolo open graph"
   },
   {
+    "id": "api.plugin.upload.array.app_error",
+    "translation": "Matriz de archivo está vacía en la solicitud multipart/form"
+  },
+  {
+    "id": "api.plugin.upload.file.app_error",
+    "translation": "No se puede abrir el archivo en la solicitud multipart/form"
+  },
+  {
+    "id": "api.plugin.upload.no_file.app_error",
+    "translation": "Falta el archivo en la solicitud multipart/form"
+  },
+  {
+    "id": "api.post.check_for_out_of_channel_mentions.link.private",
+    "translation": "agregalos al canal privado"
+  },
+  {
+    "id": "api.post.check_for_out_of_channel_mentions.link.public",
+    "translation": "agregalos al canal"
+  },
+  {
     "id": "api.post.check_for_out_of_channel_mentions.message.multiple",
-    "translation": "{{.Usernames}} y {{.LastUsername}} fueron mencionados, pero no recibieron una notificación porque no pertenecen a este canal."
+    "translation": "@{{.Usernames}} and @{{.LastUsername}} fueron mencionados pero no son parte del canal. ¿Quisieras {{.Phrase}}? Tendrán acceso a todo el historial de mensajes."
   },
   {
     "id": "api.post.check_for_out_of_channel_mentions.message.one",
-    "translation": "{{.Username}} fue mencionado, pero no recibió una notificación porque no pertenece a este canal."
+    "translation": "@{{.Username}} fue mencionado pero no es parte del canal. ¿Quisieras {{.Phrase}}? Tendrá acceso a todo el historial de mensajes."
   },
   {
     "id": "api.post.create_post.attach_files.error",
@@ -1586,6 +1673,10 @@
     "translation": "Parámetro RootId inválido"
   },
   {
+    "id": "api.post.create_post.town_square_read_only",
+    "translation": "Este canal es de sólo lectura. Sólo los miembros con permiso pueden publicar aquí."
+  },
+  {
     "id": "api.post.create_webhook_post.creating.app_error",
     "translation": "Error creando el mensaje"
   },
@@ -1612,6 +1703,14 @@
   {
     "id": "api.post.disabled_here",
     "translation": "@here ha sido desactivado debido a que el canal tiene más de {{.Users}} usuarios."
+  },
+  {
+    "id": "api.post.do_action.action_id.app_error",
+    "translation": "Id de acción no válida"
+  },
+  {
+    "id": "api.post.do_action.action_integration.app_error",
+    "translation": "Error en la acción de la integración"
   },
   {
     "id": "api.post.get_message_for_notification.files_sent",
@@ -1696,20 +1795,8 @@
     "translation": "No se pudo obtener los equipos durante el envío de mensaje directo entre equipos user_id=%v, err=%v"
   },
   {
-    "id": "api.post.send_notifications_and_forget.mention_body",
-    "translation": "Tienes una mención nueva."
-  },
-  {
     "id": "api.post.send_notifications_and_forget.mention_subject",
     "translation": "Nueva Mención"
-  },
-  {
-    "id": "api.post.send_notifications_and_forget.message_body",
-    "translation": "Tienes un mensaje nuevo."
-  },
-  {
-    "id": "api.post.send_notifications_and_forget.message_subject",
-    "translation": "Nuevo Mensaje Directo"
   },
   {
     "id": "api.post.send_notifications_and_forget.push_image_only",
@@ -1728,12 +1815,20 @@
     "translation": " te mencionó en "
   },
   {
+    "id": "api.post.send_notifications_and_forget.push_mention_no_channel",
+    "translation": " te mencionó en "
+  },
+  {
     "id": "api.post.send_notifications_and_forget.push_message",
     "translation": " te envió un mensaje directo"
   },
   {
     "id": "api.post.send_notifications_and_forget.push_non_mention",
     "translation": " publicado en "
+  },
+  {
+    "id": "api.post.send_notifications_and_forget.push_non_mention_no_channel",
+    "translation": " publicó un mensaje"
   },
   {
     "id": "api.post.send_notifications_and_forget.push_notification.error",
@@ -1873,99 +1968,99 @@
   },
   {
     "id": "api.slackimport.slack_add_bot_user.email_pwd",
-    "translation": "Usuario de Slack Bot/Integración para Importar Mensajes: Email, Contraseña: {{.Email}}, {{.Password}}\r\n"
+    "translation": "La integración/usuario Bot de Slack con el correo electrónico {{.Email}} y contraseña {{.Password}} ha sido importado.\r\n"
   },
   {
     "id": "api.slackimport.slack_add_bot_user.unable_import",
-    "translation": "No se pudo importar los mensajes del usuario importado Slack Bot/Integración: {{.Username}}\r\n"
+    "translation": "No se puede importar la Integración/usuario Bot de Slack {{.Username}}.\r\n"
   },
   {
     "id": "api.slackimport.slack_add_channels.added",
-    "translation": "\r\n Canales agregados \r\n"
+    "translation": "\r\n Canales agregados:\r\n"
   },
   {
     "id": "api.slackimport.slack_add_channels.failed_to_add_user",
-    "translation": "Falla al agregar el usuario al canal: {{.Username}}\r\n"
+    "translation": "No se puede agregar el usuario de Slack {{.Username}} al canal.\r\n"
   },
   {
     "id": "api.slackimport.slack_add_channels.import_failed",
-    "translation": "Falla al importar: {{.DisplayName}}\r\n"
+    "translation": "No se puede importar el canal de Slack {{.DisplayName}}.\r\n"
   },
   {
     "id": "api.slackimport.slack_add_channels.import_failed.warn",
-    "translation": "Importador de Slack: no se pudo importar el canal: %s"
+    "translation": "Slack Import: No se puede importar el canal de Slack: %s."
   },
   {
     "id": "api.slackimport.slack_add_channels.merge",
-    "translation": "Unificado al canal existente: {{.DisplayName}}\r\n"
+    "translation": "El canal de Slack {{.DisplayName}} ya existe como un canal activo en Mattermost. Ambos canales se han fusionado.\r\n"
   },
   {
     "id": "api.slackimport.slack_add_posts.attach_files.error",
-    "translation": "Se encontró un error al adjuntar archivos al mensaje, post_id=%s, file_ids=%v, err=%v"
+    "translation": "Slack Import: Ocurrió un error al adjuntar los archivos al mensaje, post_id=%s, file_ids=%v, err=%v."
   },
   {
     "id": "api.slackimport.slack_add_posts.bot.warn",
-    "translation": "Mensajes del Bot de Slack no han sido importados todavía"
+    "translation": "Slack Import: Los mensajes del bot de Slack todavía no pueden ser importados."
   },
   {
     "id": "api.slackimport.slack_add_posts.bot_user_no_exists.warn",
-    "translation": "Importador de Slack: No se importan los mensajes de bot porque el usuario bot-importing no existe."
+    "translation": "Slack Import: No se puede importar el mensaje del bot ya que el usuario del bot no existe."
   },
   {
     "id": "api.slackimport.slack_add_posts.msg_no_comment.debug",
-    "translation": "Comentario de archivo indefinido"
+    "translation": "Slack Import: No se puede importar el mensaje ya que no tiene comentarios."
   },
   {
     "id": "api.slackimport.slack_add_posts.msg_no_usr.debug",
-    "translation": "Mensaje sin usuario"
+    "translation": "Slack Import: No se puede importar el mensaje ya que falta el campo del usuario."
   },
   {
     "id": "api.slackimport.slack_add_posts.no_bot_id.warn",
-    "translation": "Importador de Slack: No se importan los mensajes de bot porque falta el campo BotId."
+    "translation": "Slack Import: No se puede importar el mensaje del bot ya que falta el campo BotId."
   },
   {
     "id": "api.slackimport.slack_add_posts.unsupported.warn",
-    "translation": "Tipo de mensaje no soportado: %v, %v"
+    "translation": "Slack Import: No se puede importar el mensaje ya que el tipo no es soportado: post_type=%v, post_subtype=%v."
   },
   {
     "id": "api.slackimport.slack_add_posts.upload_file_not_found.warn",
-    "translation": "No se encontró el archivo en la exportación de Slack para adjuntar al mensaje con ID de archivo {{.FileId}}"
+    "translation": "Slack Import: No se puede importar el archivo {{.FileId}} ya que no se encuentra el archivo en el archivo zip exportado de Slack."
   },
   {
     "id": "api.slackimport.slack_add_posts.upload_file_not_in_json.warn",
-    "translation": "No se puede importar el archivo para adjuntar al mensaje sin la sección \"file\" presente en la exportación."
+    "translation": "Slack Import: No se puede adjuntar el archivo al mensaje ya que el mensaje no tiene la sección \"file\" presente en la exportación de Slack."
   },
   {
     "id": "api.slackimport.slack_add_posts.upload_file_open_failed.warn",
-    "translation": "No se puede abrir el archivo adjunto con ID {{.FileId}} en el archivo de exportación con error: {{.Error}}"
+    "translation": "Slack Import: No se puede abrir el archivo {{.FileId}} de la exportación de Slack: {{.Error}}."
   },
   {
     "id": "api.slackimport.slack_add_posts.upload_file_upload_failed.warn",
-    "translation": "Se produjo un error al subir un archivo adjunto al mensaje con ID del archivo {{.FileId}} con el siguiente error: {{.Error}}"
+    "translation": "Slack Import: Ocurrió un error al cargar el archivo {{.FileId}}: {{.Error}}."
   },
   {
     "id": "api.slackimport.slack_add_posts.user_no_exists.debug",
-    "translation": "El usuario: %v no existe!"
+    "translation": "Slack Import: No se puede agregar el mensaje ya que el usuario de Slack %v no existe en Mattermost."
   },
   {
     "id": "api.slackimport.slack_add_posts.without_user.debug",
-    "translation": "Mensaje sin usuario"
+    "translation": "Slack Import: No se puede importar el mensaje ya que falta el campo de usuario."
   },
   {
     "id": "api.slackimport.slack_add_users.created",
-    "translation": "\r\n Usuarios creados\r\n"
+    "translation": "\r\nUsuarios creados:\r\n"
   },
   {
     "id": "api.slackimport.slack_add_users.email_pwd",
-    "translation": "Correo electrónico, Contraseña: {{.Email}}, {{.Password}}\r\n"
+    "translation": "La integración/usuario Bot de Slack con el correo electrónico {{.Email}} y contraseña {{.Password}} ha sido importado.\r\n"
   },
   {
     "id": "api.slackimport.slack_add_users.merge_existing",
-    "translation": "Combinado el usuario con una cuenta existente: {{.Email}}, {{.Username}}\r\n"
+    "translation": "El usuario de Slack ha sido combinado con el usuario existente en Mattermost ya que el correo electrónico {{.Email}} y el nombre de usuario {{.Username}} coinciden.\r\n"
   },
   {
     "id": "api.slackimport.slack_add_users.merge_existing_failed",
-    "translation": "Se trató de combinar el usuario con una cuenta existente: {{.Email}}, {{.Username}}, pero no se pudo agregar el usuario a este equipo.\r\n"
+    "translation": "El usuario de Slack ha sido combinado con el usuario existente en Mattermost ya que el correo electrónico {{.Email}} y el nombre de usuario {{.Username}} coinciden, pero el usuario no pudo ser agregado a su equipo.\r\n"
   },
   {
     "id": "api.slackimport.slack_add_users.missing_email_address",
@@ -1973,27 +2068,27 @@
   },
   {
     "id": "api.slackimport.slack_add_users.missing_email_address.warn",
-    "translation": "Usuario {{.Username}} no posee una dirección de correo electrónico en la exportación de Slack. Se utiliza {{.Email}} como el valor. El usuario debe actualizar su dirección de correo electrónico una vez que inicie sesión en el sistema."
+    "translation": "Slack Import: Usuario {{.Username}} no posee una dirección de correo electrónico en la exportación de Slack. Se utiliza {{.Email}} como el valor. El usuario debe actualizar su dirección de correo electrónico una vez que inicie sesión en el sistema."
   },
   {
     "id": "api.slackimport.slack_add_users.unable_import",
-    "translation": "No se pudo importar el usuario: {{.Username}}\r\n"
+    "translation": "No se pudo importar el usuario de Slack: {{.Username}}.\r\n"
   },
   {
     "id": "api.slackimport.slack_convert_channel_mentions.compile_regexp_failed.warn",
-    "translation": "No se pudo compilar la coincidencia del !canal con expresión regular para el canal de Slack {{.ChannelID}} {{.ChannelName}}"
+    "translation": "Slack Import: No se puede compilar el !canal, la coincidencia de expresión regular para el canal de Slack {{.ChannelName}} (id={{.ChannelID}})."
   },
   {
     "id": "api.slackimport.slack_convert_timestamp.bad.warn",
-    "translation": "Se ha detectado la marca del tiempo errada"
+    "translation": "Slack Import: se ha detectado una marca de tiempo mala."
   },
   {
     "id": "api.slackimport.slack_convert_user_mentions.compile_regexp_failed.warn",
-    "translation": "No se pudo compilar la coincidencia de la @mención con expresión regular para el usuario de Slack {{.UserID}} {{.Username}}"
+    "translation": "Slack Import: no se puede compilar la @mención, la coincidencia de expresión regular para que el usuario de Slack {{.Username}} (id={{.UserID}})."
   },
   {
     "id": "api.slackimport.slack_deactivate_bot_user.failed_to_deactivate",
-    "translation": "Importador de Slack: Falla al desactivar el usuario bot-importing."
+    "translation": "Slack Import: No se puede desactivar la cuenta de usuario utilizada por el bot."
   },
   {
     "id": "api.slackimport.slack_import.log",
@@ -2005,7 +2100,7 @@
   },
   {
     "id": "api.slackimport.slack_import.note2",
-    "translation": "- mensajes realizadados por el bot de Slack actualmente no son soportados.\r\n"
+    "translation": "- Los mensajes del bot de Slack actualmente no son soportados.\r\n"
   },
   {
     "id": "api.slackimport.slack_import.note3",
@@ -2013,11 +2108,11 @@
   },
   {
     "id": "api.slackimport.slack_import.notes",
-    "translation": "\r\n Notas \r\n"
+    "translation": "\r\nNotas:\r\n"
   },
   {
     "id": "api.slackimport.slack_import.open.app_error",
-    "translation": "No se pudo abrir: {{.Filename}}"
+    "translation": "No se puede abrir el archivo: {{.Filename}}.\r\n"
   },
   {
     "id": "api.slackimport.slack_import.team_fail",
@@ -2025,31 +2120,31 @@
   },
   {
     "id": "api.slackimport.slack_import.zip.app_error",
-    "translation": "No se puede abrir el archivo comprimido"
+    "translation": "No se puede abrir el archivo de exportación zip de Slack.\r\n"
   },
   {
     "id": "api.slackimport.slack_parse_channels.error",
-    "translation": "Error de análisis de los canales de slack. Importación puede que funcione de todos modos."
+    "translation": "Slack Import: Ocurrió un error al analizar algunos canales de Slack. De igual forma puede que la importación funcione."
   },
   {
     "id": "api.slackimport.slack_parse_posts.error",
-    "translation": "Error en el análisis de los mensajes de slack. Importación puede que funcione de todos modos."
+    "translation": "Slack Import: Ocurrió un error al analizar los mensajes de Slack. De igual forma puede que la importación funcione."
   },
   {
     "id": "api.slackimport.slack_sanitise_channel_properties.display_name_too_long.warn",
-    "translation": "Importador de Slack: El canal: {{.ChannelName}} tiene un nombre que es demasiado largo. Se truncará cuando sea importado."
+    "translation": "Slack Import: El canal: {{.ChannelName}} tiene un nombre que supera la longitud máxima. Se truncará cuando sea importado."
   },
   {
     "id": "api.slackimport.slack_sanitise_channel_properties.header_too_long.warn",
-    "translation": "Importador de Slack: El canal: {{.ChannelName}} tiene una cabecera, que es demasiado larga. Se truncará cuando sea importado."
+    "translation": "Slack Import: El canal: {{.ChannelName}} tiene un encabezado que supera la longitud máxima. Se truncará cuando sea importado."
   },
   {
     "id": "api.slackimport.slack_sanitise_channel_properties.name_too_long.warn",
-    "translation": "Importador de Slack: El canal: {{.ChannelName}} tiene un nombre que es demasiado largo. Se truncará cuando sea importado."
+    "translation": "Slack Import: El canal: {{.ChannelName}} tiene un nombre que supera la longitud máxima. Se truncará cuando sea importado."
   },
   {
     "id": "api.slackimport.slack_sanitise_channel_properties.purpose_too_long.warn",
-    "translation": "Importador de Slack: El canal: {{.ChannelName}} tiene una propósito que es demasiado largo. Se truncará cuando sea importado."
+    "translation": "Slack Import: El canal: {{.ChannelName}} tiene una propósito que supera la longitud máxima. Se truncará cuando sea importado."
   },
   {
     "id": "api.status.init.debug",
@@ -2074,6 +2169,10 @@
   {
     "id": "api.system.go_routines",
     "translation": "El número de goroutines supera umbral recomendado %v %v"
+  },
+  {
+    "id": "api.team.add_user_to_team.added",
+    "translation": "%v agregado al equipo por %v"
   },
   {
     "id": "api.team.add_user_to_team.missing_parameter.app_error",
@@ -2122,6 +2221,10 @@
   {
     "id": "api.team.import_team.no_file.app_error",
     "translation": "No hay un archivo bajo la solicitud de 'archivo'"
+  },
+  {
+    "id": "api.team.import_team.no_import_from.app_error",
+    "translation": "Solicitud con formato incorrecto: campo importFrom no está presente."
   },
   {
     "id": "api.team.import_team.open.app_error",
@@ -2184,6 +2287,14 @@
     "translation": "El correo electrónico debe ser de un dominio específico (e.j. @ejemplo.com). Por favor pidele más detalles tu administrador de sistemas."
   },
   {
+    "id": "api.team.join_team.post_and_forget",
+    "translation": "%v se unió al equipo."
+  },
+  {
+    "id": "api.team.leave.left",
+    "translation": "%v abandonó el equipo."
+  },
+  {
     "id": "api.team.permanent_delete_team.attempting.warn",
     "translation": "Intentando eliminar permanentemente al equipo %v id=%v"
   },
@@ -2194,6 +2305,10 @@
   {
     "id": "api.team.remove_user_from_team.missing.app_error",
     "translation": "El usuario no parece ser parte de este equipo."
+  },
+  {
+    "id": "api.team.remove_user_from_team.removed",
+    "translation": "%v fue removido del equipo."
   },
   {
     "id": "api.team.signup_team.email_disabled.app_error",
@@ -2250,14 +2365,6 @@
   {
     "id": "api.templates.email_organization",
     "translation": "Enviado por "
-  },
-  {
-    "id": "api.templates.error.link",
-    "translation": "Volver al sitio del equipo"
-  },
-  {
-    "id": "api.templates.error.title",
-    "translation": "Necesitamos de tu ayuda en {{ .SiteName }}:"
   },
   {
     "id": "api.templates.find_teams_body.found",
@@ -2332,22 +2439,6 @@
     "translation": "Ir a al mensaje"
   },
   {
-    "id": "api.templates.post_body.info",
-    "translation": "Canal: {{.ChannelName}}<br>{{.SenderName}} - {{.Day}} {{.Month}}, {{.Hour}}:{{.Minute}} {{.TimeZone}}"
-  },
-  {
-    "id": "api.templates.post_subject_in_channel",
-    "translation": "{{.SubjectText}} en {{.TeamDisplayName}} ({{.ChannelName}}) el {{.Day}} {{.Month}}, {{.Year}}"
-  },
-  {
-    "id": "api.templates.post_subject_in_direct_message",
-    "translation": "{{.SubjectText}} de {{.SenderDisplayName}} el {{.Day}} {{.Month}}, {{.Year}}"
-  },
-  {
-    "id": "api.templates.post_subject_in_group_message",
-    "translation": "Nuevo Mensaje de Grupo de {{.SenderDisplayName}} el {{.Day}} {{.Month}}, {{.Year}}"
-  },
-  {
     "id": "api.templates.reset_body.button",
     "translation": "Restablecer Contraseña"
   },
@@ -2402,6 +2493,18 @@
   {
     "id": "api.templates.upgrade_30_subject.info",
     "translation": "[MATTERMOST] Cambios a tu cuenta para la Actualización a Mattermost 3.0"
+  },
+  {
+    "id": "api.templates.user_access_token_body.info",
+    "translation": "Un token de acceso personal ha sido agregado a tu cuenta en {{ .SiteURL }}. El token puede ser utilizado para accesar {{.SiteName}} con tu cuenta.<br>Si este cambió no fue realizado por ti, por favor contacta a tu administrador del sistema."
+  },
+  {
+    "id": "api.templates.user_access_token_body.title",
+    "translation": "Token de acceso personal agregado a tu cuenta"
+  },
+  {
+    "id": "api.templates.user_access_token_subject",
+    "translation": "[{{ .SiteName }}] Token de acceso personal añadido a tu cuenta"
   },
   {
     "id": "api.templates.username_change_body.info",
@@ -2725,7 +2828,7 @@
   },
   {
     "id": "api.user.saml.not_available.app_error",
-    "translation": "SAML no está configurado o no es soportado en este servidor"
+    "translation": "SAML 2.0 no está configurado o no es soportado en este servidor"
   },
   {
     "id": "api.user.send_email_change_email_and_forget.error",
@@ -2760,6 +2863,10 @@
     "translation": "Error al enviar la notificación por correo del cambio satisfactorio de contraseña"
   },
   {
+    "id": "api.user.send_user_access_token.error",
+    "translation": "Error al enviar el correo electrónico de token de acceso personal añadido correctamente"
+  },
+  {
     "id": "api.user.send_verify_email_and_forget.failed.error",
     "translation": "Error al enviar la notificación por correo electrónico de la verificación del correo electrónico"
   },
@@ -2768,8 +2875,8 @@
     "translation": "Error al enviar la notificación de bienvenida por correo electrónico"
   },
   {
-    "id": "api.user.update_active.no_deactivate_ldap.app_error",
-    "translation": "No puedes modificar el estado de activación de cuentas AD/LDAP. Por favor, haz la modificación a través del servidor AD/LDAP."
+    "id": "api.user.update_active.no_deactivate_sso.app_error",
+    "translation": "No puedes modificar el estado de activación para cuentas de tipo SSO. Por favor, haz la modificación a través del servicio SSO."
   },
   {
     "id": "api.user.update_active.permissions.app_error",
@@ -2857,15 +2964,15 @@
   },
   {
     "id": "api.user.upload_profile_user.storage.app_error",
-    "translation": "No se puede subir el archivo. El almacenamiento de imágenes no está configurado."
+    "translation": "No se puede cargar el archivo. El almacenamiento de imágenes no está configurado."
   },
   {
     "id": "api.user.upload_profile_user.too_large.app_error",
-    "translation": "No se pudo actualizar la imagen del perfil. El archivo es muy grande."
+    "translation": "No se pudo cargar la imagen del perfil. El archivo es muy grande."
   },
   {
     "id": "api.user.upload_profile_user.upload_profile.app_error",
-    "translation": "No se pudo subir la imagen del perfil"
+    "translation": "No se pudo cargar la imagen del perfil"
   },
   {
     "id": "api.user.verify_email.bad_link.app_error",
@@ -3012,6 +3119,10 @@
     "translation": "Debe especificar el ID del equipo crear un canal"
   },
   {
+    "id": "app.channel.move_channel.members_do_not_match.error",
+    "translation": "No se puede mover un canal a menos que todos sus miembros ya sean miembros del equipo del destino."
+  },
+  {
     "id": "app.channel.post_update_channel_purpose_message.post.error",
     "translation": "No pudo publicar el mensaje del propósito del canal"
   },
@@ -3072,6 +3183,10 @@
     "translation": "No se pudo obtener el canal de grupo"
   },
   {
+    "id": "app.import.import_direct_post.save_preferences.error",
+    "translation": "Error en la importación mensajes directos. Error al guardar las preferencias."
+  },
+  {
     "id": "app.import.import_direct_post.user_not_found.error",
     "translation": "El usuario que publicó el mensaje no existe"
   },
@@ -3108,12 +3223,20 @@
     "translation": "Error al importar el mensaje. El canal con el nombre \"{{.ChannelName}}\" no pudo ser encontrado."
   },
   {
+    "id": "app.import.import_post.save_preferences.error",
+    "translation": "Error al importar el mensaje. Error al guardar las preferencias."
+  },
+  {
     "id": "app.import.import_post.team_not_found.error",
     "translation": "Error al importar el mensaje. El equipo con el nombre \"{{.TeamName}}\" no pudo ser encontrado."
   },
   {
     "id": "app.import.import_post.user_not_found.error",
     "translation": "Error al importar el mensaje. El usuario con nombre de usuario \"{{.Username}}\" no pudo ser encontrado."
+  },
+  {
+    "id": "app.import.import_user_channels.save_preferences.error",
+    "translation": "Error al importar las membresías del canal. Error al guardar las preferencias."
   },
   {
     "id": "app.import.validate_channel_import_data.create_at_zero.error",
@@ -3176,6 +3299,10 @@
     "translation": "La lista de miembros del canal directo contiene demasiados elementos"
   },
   {
+    "id": "app.import.validate_direct_channel_import_data.unknown_favoriter.error",
+    "translation": "Canales directos sólo pueden establecerse como favoritos por sus miembros. \"{{.Username}}\" no es un miembro."
+  },
+  {
     "id": "app.import.validate_direct_post_import_data.channel_members_required.error",
     "translation": "Falta la propiedad del mensaje: channel_members."
   },
@@ -3202,6 +3329,10 @@
   {
     "id": "app.import.validate_direct_post_import_data.message_missing.error",
     "translation": "Falta la propiedad obligatoria del mensaje del canal directo: message"
+  },
+  {
+    "id": "app.import.validate_direct_post_import_data.unknown_flagger.error",
+    "translation": "Mensajes en canales directos sólo pueden ser marcado por sus miembros. \"{{.Username}}\" no es un miembro."
   },
   {
     "id": "app.import.validate_direct_post_import_data.user_missing.error",
@@ -3285,11 +3416,15 @@
   },
   {
     "id": "app.import.validate_user_channels_import_data.invalid_notify_props_desktop.error",
-    "translation": "Las NotifyProps de escritorio para el Canal del Usuario en la Afiliación no es válido."
+    "translation": "Las propiedades de notificación de escritorio para el miembro de canal no son válidas."
   },
   {
     "id": "app.import.validate_user_channels_import_data.invalid_notify_props_mark_unread.error",
     "translation": "Las NotifyProps de MarkUnread para el Canal del Usuario en la Afiliación no es válido."
+  },
+  {
+    "id": "app.import.validate_user_channels_import_data.invalid_notify_props_mobile.error",
+    "translation": "Las propiedades de notificación móviles para el miembro de canal no son válidas."
   },
   {
     "id": "app.import.validate_user_channels_import_data.invalid_roles.error",
@@ -3328,6 +3463,38 @@
     "translation": "La propiedad nickname del usuario es demasiado larga."
   },
   {
+    "id": "app.import.validate_user_import_data.notify_props_channel_trigger_invalid.error",
+    "translation": "La propiedad de las palabras que desencadenan notificaciones del usuario no es válida."
+  },
+  {
+    "id": "app.import.validate_user_import_data.notify_props_comment_trigger_invalid.error",
+    "translation": "La propiedad de notificación por comentarios del usuario no es válida."
+  },
+  {
+    "id": "app.import.validate_user_import_data.notify_props_desktop_duration_invalid.error",
+    "translation": "La propiedad de la duración para la notificación de escritorio del usuario no es válida."
+  },
+  {
+    "id": "app.import.validate_user_import_data.notify_props_desktop_invalid.error",
+    "translation": "Las propiedades de notificación de escritorio del usuario no es válida."
+  },
+  {
+    "id": "app.import.validate_user_import_data.notify_props_desktop_sound_invalid.error",
+    "translation": "La propiedad de sonido para la notificación de escritorio del usuario no es válida."
+  },
+  {
+    "id": "app.import.validate_user_import_data.notify_props_email_invalid.error",
+    "translation": "La propiedad de notificación de correo electrónico del usuario no es válida."
+  },
+  {
+    "id": "app.import.validate_user_import_data.notify_props_mobile_invalid.error",
+    "translation": "La propiedad de notificación móvil del usuario no es válida."
+  },
+  {
+    "id": "app.import.validate_user_import_data.notify_props_mobile_push_status_invalid.error",
+    "translation": "La propiedad de notificación del estatus del usuario para recibir mediante push no es válida."
+  },
+  {
     "id": "app.import.validate_user_import_data.pasword_length.error",
     "translation": "La contraseña del usuario tiene una longitud no válida."
   },
@@ -3356,6 +3523,118 @@
     "translation": "Team name missing from User's Team Membership."
   },
   {
+    "id": "app.notification.body.intro.direct.full",
+    "translation": "Tienes un nuevo mensaje directo."
+  },
+  {
+    "id": "app.notification.body.intro.direct.generic",
+    "translation": "Tienes un nuevo mensaje directo de {{.SenderName}}"
+  },
+  {
+    "id": "app.notification.body.intro.notification.full",
+    "translation": "Tienes una nueva notificación."
+  },
+  {
+    "id": "app.notification.body.intro.notification.generic",
+    "translation": "Tienes una nueva notificación de {{.SenderName}}"
+  },
+  {
+    "id": "app.notification.body.text.direct.full",
+    "translation": "{{.SenderName}} - {{.Hour}}:{{.Minute}} {{.Timezone}}, {{.Day}} {{.Month}}"
+  },
+  {
+    "id": "app.notification.body.text.direct.generic",
+    "translation": "{{.Hour}}:{{.Minute}} {{.Timezone}}, {{.Day}} {{.Month}}"
+  },
+  {
+    "id": "app.notification.body.text.notification.full",
+    "translation": "Canal: {{.ChannelName}}<br>{{.SenderName}} - {{.Hour}}:{{.Minute}} {{.TimeZone}}, {{.Day}} {{.Month}}"
+  },
+  {
+    "id": "app.notification.body.text.notification.generic",
+    "translation": "{{.Hour}}:{{.Minute}} {{.Timezone}}, {{.Day}} {{.Month}}"
+  },
+  {
+    "id": "app.notification.subject.direct.full",
+    "translation": "[{{.SiteName}}] Nuevo Mensaje Directo de {{.SenderDisplayName}} el {{.Day}} {{.Month}}, {{.Year}}"
+  },
+  {
+    "id": "app.notification.subject.notification.full",
+    "translation": "[{{ .SiteName }}] Notificación en {{ .TeamName}} el {{.Day}} {{.Month}}, {{.Year}}"
+  },
+  {
+    "id": "app.plugin.activate.app_error",
+    "translation": "No se puede activar el plugin extraído. Puede que el plugin ya exista y esté activo."
+  },
+  {
+    "id": "app.plugin.config.app_error",
+    "translation": "Error al guardar el estado del plugin en la configuración"
+  },
+  {
+    "id": "app.plugin.deactivate.app_error",
+    "translation": "No puede desactivar el plugin"
+  },
+  {
+    "id": "app.plugin.disabled.app_error",
+    "translation": "Los Plugins se han deshabilitado."
+  },
+  {
+    "id": "app.plugin.extract.app_error",
+    "translation": "Se encontró un error al extraer el plugin"
+  },
+  {
+    "id": "app.plugin.filesystem.app_error",
+    "translation": "Error encontrado en el sistema de archivos"
+  },
+  {
+    "id": "app.plugin.get_plugins.app_error",
+    "translation": "No se puede obtener los complementos activos"
+  },
+  {
+    "id": "app.plugin.get_plugins.app_error",
+    "translation": "No se puede obtener los complementos activos"
+  },
+  {
+    "id": "app.plugin.id_length.app_error",
+    "translation": "Id del Plugin debe tener menos de {{.Max}} caracteres."
+  },
+  {
+    "id": "app.plugin.install.app_error",
+    "translation": "No se puede instalar el plugin."
+  },
+  {
+    "id": "app.plugin.install_id.app_error",
+    "translation": "No se puede instalar el plugin. Un plugin con el mismo ID ya está instalado."
+  },
+  {
+    "id": "app.plugin.manifest.app_error",
+    "translation": "No se puede encontrar el manifiesto del plugin extraído"
+  },
+  {
+    "id": "app.plugin.mvdir.app_error",
+    "translation": "No se puede mover el plugin desde el directorio temporal a su destino final. Puede que otro plugin este utilizando el mismo nombre de directorio."
+  },
+  {
+    "id": "app.plugin.not_installed.app_error",
+    "translation": "El Plugin no está instalado"
+  },
+  {
+    "id": "app.plugin.remove.app_error",
+    "translation": "No se puede eliminar el plugin"
+  },
+  {
+    "id": "app.plugin.upload_disabled.app_error",
+    "translation": "Los Complementos y/o la carga de complementos han sido deshabilitados."
+  },
+  {
+    "id": "app.user_access_token.disabled",
+    "translation": "Los tokens de acceso personal están inhabilitados en este servidor. Por favor, póngase en contacto con su administrador del sistema para obtener más detalles."
+  },
+  {
+    "id": "app.user_access_token.invalid_or_missing",
+    "translation": "Token no válido o ausente"
+  },
+  {
     "id": "authentication.permissions.create_group_channel.description",
     "translation": "Capacidad para crear nuevos canales de mensaje de grupo"
   },
@@ -3364,12 +3643,36 @@
     "translation": "Create Mensaje de Grupo"
   },
   {
+    "id": "authentication.permissions.create_post_public.description",
+    "translation": "Capacidad para crear mensajes en los canales públicos"
+  },
+  {
+    "id": "authentication.permissions.create_post_public.name",
+    "translation": "Crear Publicaciones en Canales Públicos"
+  },
+  {
     "id": "authentication.permissions.create_team_roles.description",
     "translation": "Capacidad para crear equipos nuevos"
   },
   {
     "id": "authentication.permissions.create_team_roles.name",
     "translation": "Crear Equipos"
+  },
+  {
+    "id": "authentication.permissions.create_user_access_token.description",
+    "translation": "Capacidad para crear tokens de acceso personales"
+  },
+  {
+    "id": "authentication.permissions.create_user_access_token.name",
+    "translation": "Crear Token de Acceso Personal"
+  },
+  {
+    "id": "authentication.permissions.manage_jobs.description",
+    "translation": "Capacidad para administrar los trabajos"
+  },
+  {
+    "id": "authentication.permissions.manage_jobs.name",
+    "translation": "Administrar Trabajos"
   },
   {
     "id": "authentication.permissions.manage_team_roles.description",
@@ -3388,6 +3691,22 @@
     "translation": "Leer Canales Públicos"
   },
   {
+    "id": "authentication.permissions.read_user_access_token.description",
+    "translation": "Capacidad para leer los campos de id, description y user_id de los tokens personales"
+  },
+  {
+    "id": "authentication.permissions.read_user_access_token.name",
+    "translation": "Leer Token de Acceso Personal"
+  },
+  {
+    "id": "authentication.permissions.revoke_user_access_token.description",
+    "translation": "Capacidad para revocar tokens de acceso personales"
+  },
+  {
+    "id": "authentication.permissions.revoke_user_access_token.name",
+    "translation": "Revocar Token de Acceso Personal"
+  },
+  {
     "id": "authentication.permissions.team_invite_user.description",
     "translation": "Capacidad para invitar usuarios a un equipo"
   },
@@ -3404,8 +3723,48 @@
     "translation": "Usar Comandos de Barra"
   },
   {
+    "id": "authentication.roles.system_post_all.description",
+    "translation": "Un rol con el permiso para publicar mensajes en cualquier canal público, privado o directo en el sistema"
+  },
+  {
+    "id": "authentication.roles.system_post_all.name",
+    "translation": "Publicar en Canales Públicos, Privados y Directos"
+  },
+  {
+    "id": "authentication.roles.system_post_all_public.description",
+    "translation": "Un rol con el permiso para publicar en cualquier canal público en el sistema"
+  },
+  {
+    "id": "authentication.roles.system_post_all_public.name",
+    "translation": "Publicar en Canales Públicos"
+  },
+  {
+    "id": "authentication.roles.system_user_access_token.description",
+    "translation": "Un rol con el permiso de crear, leer y revocar tokens de acceso personales"
+  },
+  {
+    "id": "authentication.roles.system_user_access_token.name",
+    "translation": "Token de Acceso Personal"
+  },
+  {
+    "id": "authentication.roles.team_post_all.description",
+    "translation": "Un rol con el permiso para publicar mensajes en cualquier canal público o privado en el equipo"
+  },
+  {
+    "id": "authentication.roles.team_post_all.name",
+    "translation": "Publicar en Canales Públicos y Privados"
+  },
+  {
+    "id": "authentication.roles.team_post_all_public.description",
+    "translation": "Un rol con el permiso para publicar en cualquier canal público en el equipo"
+  },
+  {
+    "id": "authentication.roles.team_post_all_public.name",
+    "translation": "Publicar en Canales Públicos"
+  },
+  {
     "id": "cli.license.critical",
-    "translation": "La característica requiere una licencia de empresa. Por favor, póngase en contacto con su Administrador del Sistema acerca de la actualización de su licencia empresarial."
+    "translation": "Característica requiere una actualización a la Edición Empresarial y la inclusión de una licencia. Por favor, póngase en contacto con su Administrador del Sistema."
   },
   {
     "id": "ent.brand.save_brand_image.decode.app_error",
@@ -3477,27 +3836,103 @@
   },
   {
     "id": "ent.compliance.licence_disable.app_error",
-    "translation": "La característica de Cumplimiento está inhabilitada para tu licencia actual. Por favor contacta a un administrador del sistema sobre como actualizar a una licencia empresarial."
+    "translation": "La característica de Conformidad está inhabilitada para tu licencia actual. Por favor contacta a un administrador del sistema sobre como actualizar a una licencia empresarial."
   },
   {
     "id": "ent.compliance.run_failed.error",
-    "translation": "Fallo el trabajo '{{.JobName}}' para exportar el Cumplimiento en '{{.FilePath}}'"
+    "translation": "Fallo el trabajo '{{.JobName}}' al exportar la conformidad en '{{.FilePath}}'"
   },
   {
     "id": "ent.compliance.run_finished.info",
-    "translation": "Se completo la exportación de Cumplimiento para el trabajo '{{.JobName}}' exportados {{.Count}} registros en '{{.FilePath}}'"
+    "translation": "Se completo la exportación de Conformidad para el trabajo '{{.JobName}}' exportados {{.Count}} registros en '{{.FilePath}}'"
   },
   {
     "id": "ent.compliance.run_limit.warning",
-    "translation": "Advertencia en el trabajo '{{.JobName}}' para exportación de Cumplimiento. Se retornaron demasiados registros, truncando a 30,000 en '{{.FilePath}}'"
+    "translation": "Advertencia en el trabajo '{{.JobName}}' para exportación de Conformidad. Se retornaron demasiados registros, truncando a 30,000 en '{{.FilePath}}'"
   },
   {
     "id": "ent.compliance.run_started.info",
-    "translation": "Iniciado el trabajo '{{.JobName}}' para exportar el Cumplimiento en '{{.FilePath}}'"
+    "translation": "Iniciado el trabajo '{{.JobName}}' para exportar la Conformidad en '{{.FilePath}}'"
+  },
+  {
+    "id": "ent.data_retention.generic.license.error",
+    "translation": "La licencia no admite la Retención de Datos."
+  },
+  {
+    "id": "ent.elasticsearch.aggregator_worker.create_index_job.error",
+    "translation": "El agregador trabajos de Elasticsearch no pudo crear el trabajo de indexación"
+  },
+  {
+    "id": "ent.elasticsearch.aggregator_worker.delete_indexes.error",
+    "translation": "El agregador trabajos de Elasticsearch no pudo eliminar los índices"
+  },
+  {
+    "id": "ent.elasticsearch.aggregator_worker.get_indexes.error",
+    "translation": "El agregador trabajos de Elasticsearch no pudo obtener los índices"
+  },
+  {
+    "id": "ent.elasticsearch.aggregator_worker.index_job_failed.error",
+    "translation": "El agregador trabajos de Elasticsearch falló debido a que hay un trabajo indexación fallando"
+  },
+  {
+    "id": "ent.elasticsearch.create_client.connect_failed",
+    "translation": "La configuración del cliente de Elasticsearch falló"
+  },
+  {
+    "id": "ent.elasticsearch.create_index_if_not_exists.index_create_failed",
+    "translation": "No se pudo crear el índice de Elasticsearch"
+  },
+  {
+    "id": "ent.elasticsearch.create_index_if_not_exists.index_exists_failed",
+    "translation": "No se pudo establecer si existe un índice de Elasticsearch"
+  },
+  {
+    "id": "ent.elasticsearch.create_index_if_not_exists.index_mapping_failed",
+    "translation": "Error al configurar el mapa de índices de Elasticsearch"
+  },
+  {
+    "id": "ent.elasticsearch.data_retention_delete_indexes.delete_index.error",
+    "translation": "No se pudo borrar el índice de ElasticSearch"
+  },
+  {
+    "id": "ent.elasticsearch.data_retention_delete_indexes.get_indexes.error",
+    "translation": "No se pudo obtener los índices de Elasticsearch"
+  },
+  {
+    "id": "ent.elasticsearch.delete_post.error",
+    "translation": "Error al eliminar el mensaje"
+  },
+  {
+    "id": "ent.elasticsearch.generic.disabled",
+    "translation": "La búsqueda con Elasticsearch está deshabilitada en este servidor"
+  },
+  {
+    "id": "ent.elasticsearch.index_post.error",
+    "translation": "Error al indexar el mensaje"
+  },
+  {
+    "id": "ent.elasticsearch.indexer.do_job.get_oldest_post.error",
+    "translation": "El mensaje más antiguo no puede ser recuperado de la base de datos."
+  },
+  {
+    "id": "ent.elasticsearch.indexer.do_job.parse_end_time.error",
+    "translation": "El trabajo de Elasticsearch falló al analizar la hora de finalización"
+  },
+  {
+    "id": "ent.elasticsearch.indexer.do_job.parse_start_time.error",
+    "translation": "El trabajo de Elasticsearch falló al analizar la hora de inicio"
+  },
+  {
+    "id": "ent.elasticsearch.not_started.error",
+    "translation": "Elasticsearch no se ha iniciado"
+  },
+  {
+    "id": "ent.elasticsearch.purge_indexes.delete_failed",
+    "translation": "No se pudo borrar el índice de ElasticSearch"
   },
   {
     "id": "ent.elasticsearch.search_posts.disabled",
-    "translation": "La búsqueda con ElasticSearch está deshabilitada en este servidor"
+    "translation": "La búsqueda con Elasticsearch está deshabilitada en este servidor"
   },
   {
     "id": "ent.elasticsearch.search_posts.search_failed",
@@ -3508,24 +3943,28 @@
     "translation": "No pudo decodificar los resultados de búsqueda"
   },
   {
-    "id": "ent.elasticsearch.start.connect_failed",
-    "translation": "La configuración de ElasticSearch Cliente falló"
+    "id": "ent.elasticsearch.start.create_bulk_processor_failed.app_error",
+    "translation": "No se pudo crear el procesador a granel de Elasticsearch"
   },
   {
-    "id": "ent.elasticsearch.start.index_create_failed",
-    "translation": "No se pudo crear el índice de ElasticSearch"
-  },
-  {
-    "id": "ent.elasticsearch.start.index_exists_failed",
-    "translation": "No se pudo establecer si existe un índice de ElasticSearch"
-  },
-  {
-    "id": "ent.elasticsearch.start.index_mapping_failed",
-    "translation": "Error al configurar el mapa de índices de ElasticSearch"
+    "id": "ent.elasticsearch.start.create_bulk_processor_failed.app_error",
+    "translation": "No se pudo crear el procesador a granel de Elasticsearch"
   },
   {
     "id": "ent.elasticsearch.start.index_settings_failed",
-    "translation": "No se pudo establecer el índice de configuración de ElasticSearch"
+    "translation": "No se pudo establecer el índice de configuración de Elasticsearch"
+  },
+  {
+    "id": "ent.elasticsearch.start.start_bulk_processor_failed.app_error",
+    "translation": "No se pudo iniciar procesador a granel de Elasticsearch"
+  },
+  {
+    "id": "ent.elasticsearch.start.start_bulk_processor_failed.app_error",
+    "translation": "No se pudo iniciar procesador a granel de Elasticsearch"
+  },
+  {
+    "id": "ent.elasticsearch.test_config.connect_failed",
+    "translation": "La conexión al servidor Elasticsearch no pudo establecer."
   },
   {
     "id": "ent.elasticsearch.test_config.indexing_disabled.error",
@@ -3534,6 +3973,10 @@
   {
     "id": "ent.elasticsearch.test_config.license.error",
     "translation": "La licencia no admite Elasticsearch."
+  },
+  {
+    "id": "ent.elasticsearch.test_config.reenter_password",
+    "translation": "La dirección URL del Servidor Elasticsearch o el nombre de Usuario ha cambiado. Por favor, vuelva a introducir la contraseña de Elasticsearch para probar la conexión."
   },
   {
     "id": "ent.emoji.licence_disable.app_error",
@@ -3588,6 +4031,14 @@
     "translation": "El usuario de Mattermost fue actualizado por el servidor AD/LDAP."
   },
   {
+    "id": "ent.ldap.sync.index_job_failed.error",
+    "translation": "Falló el trabajo de sincronización LDAP"
+  },
+  {
+    "id": "ent.ldap.sync_worker.create_index_job.error",
+    "translation": "No se creó el trabajo de sincronización de LDAP"
+  },
+  {
     "id": "ent.ldap.syncdone.info",
     "translation": "Sincronización de AD/LDAP completada"
   },
@@ -3598,6 +4049,10 @@
   {
     "id": "ent.ldap.validate_filter.app_error",
     "translation": "Filtro de AD/LDAP inválido"
+  },
+  {
+    "id": "ent.message_export.generic.license.error",
+    "translation": "Licencia no soporta la Exportación de Mensajes."
   },
   {
     "id": "ent.metrics.starting.info",
@@ -3717,35 +4172,19 @@
   },
   {
     "id": "ent.saml.service_disable.app_error",
-    "translation": "SAML no está configurado o no es soportado en este servidor"
+    "translation": "SAML 2.0 no está configurado o no es soportado en este servidor"
   },
   {
     "id": "ent.saml.update_saml_user.unable_error",
     "translation": "No se puede actualizar el usuario SAML existente. Se Permite el inicio de sesión de todos modos. err=%v"
   },
   {
-    "id": "error.generic.link_message",
-    "translation": "Volver a Mattermost"
+    "id": "jobs.request_cancellation.status.error",
+    "translation": "No se puede solicitar la cancelación de un trabajo que no está en un estado cancelable."
   },
   {
-    "id": "error.generic.message",
-    "translation": "Ha ocurrido un error."
-  },
-  {
-    "id": "error.generic.title",
-    "translation": "Error"
-  },
-  {
-    "id": "error.not_found.link_message",
-    "translation": "Volver a Mattermost"
-  },
-  {
-    "id": "error.not_found.message",
-    "translation": "La página que estás intentando acceder no existe."
-  },
-  {
-    "id": "error.not_found.title",
-    "translation": "Página no encontrada"
+    "id": "jobs.set_job_error.update.error",
+    "translation": "No se puede establecer el estado al trabajo de error"
   },
   {
     "id": "manaultesting.get_channel_id.no_found.debug",
@@ -3952,6 +4391,26 @@
     "translation": "User id inválido"
   },
   {
+    "id": "model.channel_member_history.is_valid.channel_id.app_error",
+    "translation": "Id de canal no válido"
+  },
+  {
+    "id": "model.channel_member_history.is_valid.join_time.app_error",
+    "translation": "Fecha de unión no válida"
+  },
+  {
+    "id": "model.channel_member_history.is_valid.leave_time.app_error",
+    "translation": "Fecha de abandono no válida"
+  },
+  {
+    "id": "model.channel_member_history.is_valid.user_email.app_error",
+    "translation": "Correo electrónico de usuario no válido"
+  },
+  {
+    "id": "model.channel_member_history.is_valid.user_id.app_error",
+    "translation": "Id de usuario no válido"
+  },
+  {
     "id": "model.client.connecting.app_error",
     "translation": "Encontramos un error mientras conectabamos al servidor"
   },
@@ -4016,6 +4475,10 @@
     "translation": "Error al crear la solicitud multiparte del certificado SAML"
   },
   {
+    "id": "model.client.writer.app_error",
+    "translation": "Incapaz de construir una solicitud multipart"
+  },
+  {
     "id": "model.command.is_valid.create_at.app_error",
     "translation": "Fecha de Creación debe ser válida"
   },
@@ -4025,7 +4488,7 @@
   },
   {
     "id": "model.command.is_valid.display_name.app_error",
-    "translation": "Nombre para mostrar no válido"
+    "translation": "Título inválido"
   },
   {
     "id": "model.command.is_valid.id.app_error",
@@ -4064,6 +4527,34 @@
     "translation": "Id de usuario inválido"
   },
   {
+    "id": "model.command_hook.channel_id.app_error",
+    "translation": "Id de canal no válido"
+  },
+  {
+    "id": "model.command_hook.command_id.app_error",
+    "translation": "ID de commando no válido"
+  },
+  {
+    "id": "model.command_hook.create_at.app_error",
+    "translation": "Create debe ser un tiempo válido"
+  },
+  {
+    "id": "model.command_hook.id.app_error",
+    "translation": "Comando con hook id no válido"
+  },
+  {
+    "id": "model.command_hook.parent_id.app_error",
+    "translation": "Id del padre no es válido"
+  },
+  {
+    "id": "model.command_hook.root_id.app_error",
+    "translation": "Id de la raíz no es válido"
+  },
+  {
+    "id": "model.command_hook.user_id.app_error",
+    "translation": "Id de usuario no válido"
+  },
+  {
     "id": "model.compliance.is_valid.create_at.app_error",
     "translation": "Create debe ser una fecha válida"
   },
@@ -4092,6 +4583,26 @@
     "translation": "No se puede habilitar el correo electrónico por lotes cuando la agrupación de servidores está habilitada"
   },
   {
+    "id": "model.config.is_valid.data_retention.deletion_job_start_time.app_error",
+    "translation": "La hora de inicio del trabajo de retención de datos debe ser en formato 24 horas en la forma HH:MM."
+  },
+  {
+    "id": "model.config.is_valid.data_retention.file_retention_days_too_low.app_error",
+    "translation": "La retención de archivos debe ser de un día o más."
+  },
+  {
+    "id": "model.config.is_valid.data_retention.message_retention_days_too_low.app_error",
+    "translation": "La retención de mensajes debe ser de un día o más."
+  },
+  {
+    "id": "model.config.is_valid.elastic_search.aggregate_posts_after_days.app_error",
+    "translation": "El valor AggregatePostsAfterDays de Elasticsearch debe ser un número mayor que o igual a 1"
+  },
+  {
+    "id": "model.config.is_valid.elastic_search.bulk_indexing_time_window_seconds.app_error",
+    "translation": "El tiempo a transcurrir para ejecutar la indexación a granel de Elasticsearch debe ser de al menos 1 segundo."
+  },
+  {
     "id": "model.config.is_valid.elastic_search.connection_url.app_error",
     "translation": "El valor de Elastic Search ConnectionUrl debe ser proporcionado cuando está habilitado la indización de Elastic Search."
   },
@@ -4100,8 +4611,20 @@
     "translation": "El valor de Elastic Search IndexingEnabled debe ser verdadero cuando el valor de Elastic Search SearchEnabled es verdadero."
   },
   {
+    "id": "model.config.is_valid.elastic_search.live_indexing_batch_size.app_error",
+    "translation": "El tamaño del lote de la indexación en tiempo real de Elasticsearch debe ser de al menos 1"
+  },
+  {
     "id": "model.config.is_valid.elastic_search.password.app_error",
     "translation": "El valor de Elastic Search Password debe ser proporcionado cuando está habilitado la indización de Elastic Search."
+  },
+  {
+    "id": "model.config.is_valid.elastic_search.posts_aggregator_job_start_time.app_error",
+    "translation": "El ajuste PostsAggregatorJobStartTime de Elasticsearch debe ser un tiempo en el formato \"hh:mm\""
+  },
+  {
+    "id": "model.config.is_valid.elastic_search.request_timeout_seconds.app_error",
+    "translation": "El de tiempo de espera de la solicitud de Elasticsearch debe ser de al menos 1 segundo."
   },
   {
     "id": "model.config.is_valid.elastic_search.username.app_error",
@@ -4114,6 +4637,10 @@
   {
     "id": "model.config.is_valid.email_batching_interval.app_error",
     "translation": "Intervalo inválido para los correos electrónicos por lotes en la configuración de correo electrónico.  Debe ser de 30 segundos o más."
+  },
+  {
+    "id": "model.config.is_valid.email_notification_contents_type.app_error",
+    "translation": "Configuración del tipo de contenido para la notificación por correo electrónico no válido. Debe ser uno de los siguientes valores 'full' o 'generic'."
   },
   {
     "id": "model.config.is_valid.email_reset_salt.app_error",
@@ -4224,6 +4751,10 @@
     "translation": "Dirección dónde se escuchará el servicio en la configuracón del servicio debe ser asignada."
   },
   {
+    "id": "model.config.is_valid.localization.available_locales.app_error",
+    "translation": "Los Idiomas disponibles debe contener el idioma del cliente predeterminado"
+  },
+  {
     "id": "model.config.is_valid.login_attempts.app_error",
     "translation": "Número inválido de máximos intentos de inició de sesión en la configuración del servicio.  Debe ser un número positivo."
   },
@@ -4246,6 +4777,30 @@
   {
     "id": "model.config.is_valid.max_users.app_error",
     "translation": "Número inválido del máximo de usuarios por equipo en la configuración de equipo.  Debe ser un número positivo."
+  },
+  {
+    "id": "model.config.is_valid.message_export.batch_size.app_error",
+    "translation": "El ajuste BatchSize para realizar el trabajo de Exportación de Mensajes debe un entero positivo"
+  },
+  {
+    "id": "model.config.is_valid.message_export.daily_runtime.app_error",
+    "translation": "El ajuste DailyRuntime para realizar el trabajo de Exportación de Mensajes debe ser en formato 24 horas HH:MM."
+  },
+  {
+    "id": "model.config.is_valid.message_export.enable.app_error",
+    "translation": "El ajuste EnableExport para realizar el trabajo de Exportación de Mensajes debe ser verdadero o falso"
+  },
+  {
+    "id": "model.config.is_valid.message_export.export_from.app_error",
+    "translation": "El ajuste ExportFromTimestamp para realizar el trabajo de Exportación de Mensajes debe ser una marca de tiempo (expresada en segundos desde la época unix). Sólo los mensajes enviados después de esa fecha serán exportados."
+  },
+  {
+    "id": "model.config.is_valid.message_export.file_location.app_error",
+    "translation": "El ajuste FileLocation para realizar el trabajo de Exportación de Mensajes debe ser un directorio con permiso de escritura donde la data de exportación será almacenada."
+  },
+  {
+    "id": "model.config.is_valid.message_export.file_location.relative",
+    "translation": "El ajuste FileLocation para realizar el trabajo de Exportación de Mensajes debe ser un sub-directorio de FileSettings.Directory"
   },
   {
     "id": "model.config.is_valid.password_length.app_error",
@@ -4281,7 +4836,7 @@
   },
   {
     "id": "model.config.is_valid.saml_idp_cert.app_error",
-    "translation": "Falta el Certificado Público del Proveedor de Identidad. ¿Te olvideste de subirlo?"
+    "translation": "Falta el Certificado Público del Proveedor de Identidad. ¿Olvidaste cargarlo?"
   },
   {
     "id": "model.config.is_valid.saml_idp_descriptor_url.app_error",
@@ -4293,11 +4848,11 @@
   },
   {
     "id": "model.config.is_valid.saml_private_key.app_error",
-    "translation": "Falta la Llave Privada del Proveedor de Servicios. ¿Te olvideste de subirla?"
+    "translation": "Falta la Llave Privada del Proveedor de Servicios. ¿Olvidaste cargarla?"
   },
   {
     "id": "model.config.is_valid.saml_public_cert.app_error",
-    "translation": "Falta el Certificado Público del Proveedor de Servicio. ¿Te olvideste de subirlo?"
+    "translation": "Falta el Certificado Público del Proveedor de Servicio. ¿Olvidaste cargarlo?"
   },
   {
     "id": "model.config.is_valid.saml_username_attribute.app_error",
@@ -4417,7 +4972,7 @@
   },
   {
     "id": "model.incoming_hook.display_name.app_error",
-    "translation": "Nombre para mostrar no válido"
+    "translation": "Título inválido"
   },
   {
     "id": "model.incoming_hook.id.app_error",
@@ -4434,6 +4989,22 @@
   {
     "id": "model.incoming_hook.user_id.app_error",
     "translation": "Id del Usuario inválido"
+  },
+  {
+    "id": "model.job.is_valid.create_at.app_error",
+    "translation": "Create debe ser un tiempo válido"
+  },
+  {
+    "id": "model.job.is_valid.id.app_error",
+    "translation": "ID de trabajo no válido."
+  },
+  {
+    "id": "model.job.is_valid.status.app_error",
+    "translation": "Estado del trabajo no válido"
+  },
+  {
+    "id": "model.job.is_valid.type.app_error",
+    "translation": "Tipo de trabajo inválido"
   },
   {
     "id": "model.oauth.is_valid.app_id.app_error",
@@ -4493,7 +5064,7 @@
   },
   {
     "id": "model.outgoing_hook.is_valid.display_name.app_error",
-    "translation": "Nombre para mostrar no válido"
+    "translation": "Título inválido"
   },
   {
     "id": "model.outgoing_hook.is_valid.id.app_error",
@@ -4526,6 +5097,26 @@
   {
     "id": "model.outgoing_hook.is_valid.words.app_error",
     "translation": "Palabras que desencadenan acciones no válidas"
+  },
+  {
+    "id": "model.plugin_command.error.app_error",
+    "translation": "Ocurrió un error mientras se intentaba ejecutar este comando."
+  },
+  {
+    "id": "model.plugin_key_value.is_valid.key.app_error",
+    "translation": "Clave no válida, debe ser más de {{.Min}} y un máximo de {{.Max}} caracteres."
+  },
+  {
+    "id": "model.plugin_key_value.is_valid.key.app_error",
+    "translation": "Clave no válida, debe ser más de {{.Min}} y un máximo de {{.Max}} caracteres."
+  },
+  {
+    "id": "model.plugin_key_value.is_valid.plugin_id.app_error",
+    "translation": "ID de plugin no válido, debe ser más de {{.Min}} y un máximo de {{.Max}} caracteres."
+  },
+  {
+    "id": "model.plugin_key_value.is_valid.plugin_id.app_error",
+    "translation": "ID de plugin no válido, debe ser más de {{.Min}} y un máximo de {{.Max}} caracteres."
   },
   {
     "id": "model.post.is_valid.channel_id.app_error",
@@ -4812,8 +5403,24 @@
     "translation": "Nombre de usuario inválido"
   },
   {
+    "id": "model.user_access_token.is_valid.description.app_error",
+    "translation": "Descripción no válida, debe tener 255 o menos carácteres"
+  },
+  {
+    "id": "model.user_access_token.is_valid.token.app_error",
+    "translation": "Token de acceso no válido"
+  },
+  {
+    "id": "model.user_access_token.is_valid.user_id.app_error",
+    "translation": "Id de usuario no válido"
+  },
+  {
     "id": "model.utils.decode_json.app_error",
     "translation": "no se puede decodificar"
+  },
+  {
+    "id": "plugin.rpcplugin.invocation.error",
+    "translation": "Error al invocar el plugin de RPC"
   },
   {
     "id": "store.sql.alter_column_type.critical",
@@ -4921,7 +5528,7 @@
   },
   {
     "id": "store.sql.schema_version.critical",
-    "translation": "La version del esquema de la base de datos %v no puede ser actualizada.  No debes saltarte ninguna versión anterior."
+    "translation": "La versión %v del esquema de la Base de datos ya no es soportado. Este servidor de Mattermost soporta actualizaciones de la versión del esquema automáticamente desde %v hasta la versión del esquema %v. Disminuir la versión no está soportado. Por favor realiza una actualización de al menos la versión %v manualmente antes de continuar"
   },
   {
     "id": "store.sql.short_ciphertext",
@@ -4950,6 +5557,10 @@
   {
     "id": "store.sql_audit.get.limit.app_error",
     "translation": "Límite de paginación excedido"
+  },
+  {
+    "id": "store.sql_audit.permanent_delete_batch.app_error",
+    "translation": "Hemos detectado un error al eliminar permanentemente el lote de auditorías"
   },
   {
     "id": "store.sql_audit.permanent_delete_by_user.app_error",
@@ -5204,8 +5815,40 @@
     "translation": "Encontramos un error actualizando el miembro del canal"
   },
   {
+    "id": "store.sql_channel_member_history.get_all.app_error",
+    "translation": "No se pudo obtener los registros"
+  },
+  {
+    "id": "store.sql_channel_member_history.get_users_in_channel_at.app_error",
+    "translation": "No se pudo obtener los usuarios del canal en el tiempo especificado"
+  },
+  {
+    "id": "store.sql_channel_member_history.get_users_in_channel_during.app_error",
+    "translation": "No se pudo obtener los usuarios del canal en el período de tiempo especificado"
+  },
+  {
+    "id": "store.sql_channel_member_history.log_join_event.app_error",
+    "translation": "No se pudo registrar el historial de los miembros del canal"
+  },
+  {
+    "id": "store.sql_channel_member_history.log_leave_event.select_error",
+    "translation": "No se pudo registrar el historial de los miembros del canal. No se han encontrados registros de unión existentes"
+  },
+  {
+    "id": "store.sql_channel_member_history.log_leave_event.update_error",
+    "translation": "No se pudo registrar el historial de los miembros del canal. Falla al actualizar en registro de unión existente"
+  },
+  {
+    "id": "store.sql_channel_member_history.permanent_delete_batch.app_error",
+    "translation": "No se pudo purgar los registros"
+  },
+  {
     "id": "store.sql_command.analytics_command_count.app_error",
     "translation": "No pudimos contar los comandos de barra"
+  },
+  {
+    "id": "store.sql_command.get_by_trigger.app_error",
+    "translation": "No pudimos obtener el comando"
   },
   {
     "id": "store.sql_command.save.delete.app_error",
@@ -5236,12 +5879,36 @@
     "translation": "No pudimos actualizar el comando"
   },
   {
+    "id": "store.sql_command_webhooks.get.app_error",
+    "translation": "No pudimos obtener el webhook"
+  },
+  {
+    "id": "store.sql_command_webhooks.save.app_error",
+    "translation": "No pudimos guardar el Comando o Webhook"
+  },
+  {
+    "id": "store.sql_command_webhooks.save.existing.app_error",
+    "translation": "No puedes actualizar un Comando o Webhook existente"
+  },
+  {
+    "id": "store.sql_command_webhooks.try_use.app_error",
+    "translation": "No se puede utilizar el webhook"
+  },
+  {
+    "id": "store.sql_command_webhooks.try_use.invalid.app_error",
+    "translation": "Webhook no válido"
+  },
+  {
     "id": "store.sql_compliance.get.finding.app_error",
-    "translation": "Se ha detectado un error al recuperar los informes de cumplimiento"
+    "translation": "Se ha detectado un error al recuperar los informes de conformidad"
+  },
+  {
+    "id": "store.sql_compliance.message_export.app_error",
+    "translation": "Error al seleccionar los mensajes a exportar"
   },
   {
     "id": "store.sql_compliance.save.saving.app_error",
-    "translation": "Se ha detectado un error al guardar el informe de cumplimiento"
+    "translation": "Se ha detectado un error al guardar el informe de conformidad"
   },
   {
     "id": "store.sql_emoji.delete.app_error",
@@ -5288,6 +5955,14 @@
     "translation": "No pudimos obtener la información del archivo para el mensaje"
   },
   {
+    "id": "store.sql_file_info.permanent_delete.app_error",
+    "translation": "No pudimos eliminar permanentemente la información del archivo"
+  },
+  {
+    "id": "store.sql_file_info.permanent_delete_batch.app_error",
+    "translation": "Hemos detectado un error al eliminar permanentemente el lote de información archivos"
+  },
+  {
     "id": "store.sql_file_info.save.app_error",
     "translation": "No pudimos guardar la información del archivo"
   },
@@ -5296,24 +5971,32 @@
     "translation": "No pudimos guardar o actualizar la información del archivo"
   },
   {
-    "id": "store.sql_job_status.delete_by_type.app_error",
-    "translation": "No pudimos eliminar el trabajo de estatus"
+    "id": "store.sql_job.delete.app_error",
+    "translation": "No pudimos eliminar el trabajo"
   },
   {
-    "id": "store.sql_job_status.get.app_error",
-    "translation": "No pudimos obtener el trabajo de estatus"
+    "id": "store.sql_job.get.app_error",
+    "translation": "No pudimos obtener el trabajo"
   },
   {
-    "id": "store.sql_job_status.get_all.app_error",
-    "translation": "No pudimos obtener todos los trabajos de estatus"
+    "id": "store.sql_job.get_all.app_error",
+    "translation": "No pudimos obtener los trabajos"
   },
   {
-    "id": "store.sql_job_status.save.app_error",
-    "translation": "No pudimos guardar el trabajo de estatus"
+    "id": "store.sql_job.get_count_by_status_and_type.app_erro",
+    "translation": "No pudimos obtener la cantidad de trabajos según estado y tipo"
   },
   {
-    "id": "store.sql_job_status.update.app_error",
-    "translation": "No pudimos actualizar el trabajo de estatus"
+    "id": "store.sql_job.get_newest_job_by_status_and_type.app_error",
+    "translation": "No pudimos obtener el trabajo más reciente según estado y tipo"
+  },
+  {
+    "id": "store.sql_job.save.app_error",
+    "translation": "No pudimos guardar el trabajo"
+  },
+  {
+    "id": "store.sql_job.update.app_error",
+    "translation": "No pudimos actualizar el trabajo"
   },
   {
     "id": "store.sql_license.get.app_error",
@@ -5428,6 +6111,22 @@
     "translation": "Encontramos un error actualizando la app"
   },
   {
+    "id": "store.sql_plugin_store.delete.app_error",
+    "translation": "No se puede eliminar el valor de la clave del plugin"
+  },
+  {
+    "id": "store.sql_plugin_store.get.app_error",
+    "translation": "No se pudo obtener el valor de la clave del plugin"
+  },
+  {
+    "id": "store.sql_plugin_store.save.app_error",
+    "translation": "No se pudo guardar o actualizar el valor de la clave del plugin"
+  },
+  {
+    "id": "store.sql_plugin_store.save_unique.app_error",
+    "translation": "No pudo guardar o  actualizar valor de la clave del plugin debido a una infracción de restricción única"
+  },
+  {
     "id": "store.sql_post.analytics_posts_count.app_error",
     "translation": "No pudimos obtener la cantidad de mensajes"
   },
@@ -5464,6 +6163,10 @@
     "translation": "No pudimos obtener los mensajes padres del canal"
   },
   {
+    "id": "store.sql_post.get_posts_batch_for_indexing.get.app_error",
+    "translation": "No se pudo obtener los mensajes en lote para la indexación"
+  },
+  {
     "id": "store.sql_post.get_posts_by_ids.app_error",
     "translation": "No pudimos obtener los mensajes"
   },
@@ -5490,6 +6193,14 @@
   {
     "id": "store.sql_post.permanent_delete_all_comments_by_user.app_error",
     "translation": "No pudimos eliminar los comentarios para el usuario"
+  },
+  {
+    "id": "store.sql_post.permanent_delete_batch.app_error",
+    "translation": "Hemos detectado un error al eliminar permanentemente el lote de los mensajes"
+  },
+  {
+    "id": "store.sql_post.permanent_delete_batch.app_error",
+    "translation": "Hemos detectado un error al eliminar permanentemente el lote de los mensajes"
   },
   {
     "id": "store.sql_post.permanent_delete_by_channel.app_error",
@@ -5522,6 +6233,10 @@
   {
     "id": "store.sql_post.update.app_error",
     "translation": "No pudimos actualizar el Mensaje"
+  },
+  {
+    "id": "store.sql_preference.cleanup_flags_batch.app_error",
+    "translation": "Hemos detectado un error al limpiar los lotes para los mensajes marcados"
   },
   {
     "id": "store.sql_preference.delete.app_error",
@@ -5610,6 +6325,10 @@
   {
     "id": "store.sql_reaction.get_for_post.app_error",
     "translation": "No se puede obtener las reacciones del mensaje"
+  },
+  {
+    "id": "store.sql_reaction.permanent_delete_batch.app_error",
+    "translation": "Hemos detectado un error al eliminar permanentemente el lote de reacciones"
   },
   {
     "id": "store.sql_reaction.save.begin.app_error",
@@ -6040,6 +6759,26 @@
     "translation": "No se puede actualizar el campo de verificar correo"
   },
   {
+    "id": "store.sql_user_access_token.delete.app_error",
+    "translation": "No pudimos eliminar el token de acceso personal"
+  },
+  {
+    "id": "store.sql_user_access_token.get.app_error",
+    "translation": "No pudimos obtener el token de acceso personal"
+  },
+  {
+    "id": "store.sql_user_access_token.get_by_token.app_error",
+    "translation": "No pudimos obtener el token de acceso personal por token"
+  },
+  {
+    "id": "store.sql_user_access_token.get_by_user.app_error",
+    "translation": "No pudimos obtener el token de acceso personal por usuario"
+  },
+  {
+    "id": "store.sql_user_access_token.save.app_error",
+    "translation": "No pudimos guardar el token de acceso personal"
+  },
+  {
     "id": "store.sql_webhooks.analytics_incoming_count.app_error",
     "translation": "No pudimos contar la cantidad de webhooks entrantes"
   },
@@ -6080,7 +6819,15 @@
     "translation": "No pudimos obtener los webhooks"
   },
   {
+    "id": "store.sql_webhooks.permanent_delete_incoming_by_channel.app_error",
+    "translation": "No pudimos eliminar el webhook"
+  },
+  {
     "id": "store.sql_webhooks.permanent_delete_incoming_by_user.app_error",
+    "translation": "No pudimos eliminar el webhook"
+  },
+  {
+    "id": "store.sql_webhooks.permanent_delete_outgoing_by_channel.app_error",
     "translation": "No pudimos eliminar el webhook"
   },
   {
@@ -6116,6 +6863,10 @@
     "translation": "Sistema"
   },
   {
+    "id": "utils.config.add_client_locale.app_error",
+    "translation": "No se puede cargar el archivo de configuración de mattermost:  Se agrega DefaultClientLocale a AvailableLocales."
+  },
+  {
     "id": "utils.config.load_config.decoding.panic",
     "translation": "Error decifrando la configuración del archivo={{.Filename}}, err={{.Error}}"
   },
@@ -6136,12 +6887,16 @@
     "translation": "Ocurrió un error mientras se guardaba el archivo en {{.Filename}}"
   },
   {
+    "id": "utils.config.supported_available_locales.app_error",
+    "translation": "No se puede cargar el archivo de configuración de mattermost:  AvailableLocales debe incluir DefaultClientLocale. Se asignan todos los idiomas como valor predeterminado a AvailableLocales."
+  },
+  {
     "id": "utils.config.supported_client_locale.app_error",
-    "translation": "No se pudo cargar la configuración de mattermost:  El valor de DefaultClientLocale debe ser uno de los idiomas soportados"
+    "translation": "No se puede cargar el archivo de configuración de mattermost:  DefaultClientLocale debe contener uno de los idiomas soportados. Se asigna `en` como valor predeterminado a DefaultClientLocale."
   },
   {
     "id": "utils.config.supported_server_locale.app_error",
-    "translation": "No se pudo cargar la configuración de mattermost:  El valor de DefaultServerLocale debe ser uno de los idiomas soportados"
+    "translation": "No se puede cargar el archivo de configuración de mattermost:  DefaultClientLocale debe contener uno de los idiomas soportados. Se asigna `en` como valor predeterminado a DefaultClientLocale."
   },
   {
     "id": "utils.config.validate_locale.app_error",
@@ -6150,6 +6905,42 @@
   {
     "id": "utils.diagnostic.analytics_not_found.app_error",
     "translation": "Analytics no se ha inicializado"
+  },
+  {
+    "id": "utils.file.list_directory.configured.app_error",
+    "translation": "No ha sido configurado apropiadamente el almacenamiento. Debe ser configurado para utilizar S3 o almacenamiento local."
+  },
+  {
+    "id": "utils.file.list_directory.local.app_error",
+    "translation": "Se encontró un error al listar el directorio del almacenamiento en el servidor local."
+  },
+  {
+    "id": "utils.file.list_directory.s3.app_error",
+    "translation": "Se encontró un error al listar el directorio en S3."
+  },
+  {
+    "id": "utils.file.remove_directory.configured.app_error",
+    "translation": "Almacenamiento de archivos no está correctamente configurado. Por favor, configurar, ya sea para S3 o almacenamiento de archivos en el servidor local."
+  },
+  {
+    "id": "utils.file.remove_directory.local.app_error",
+    "translation": "Se encontró un error al eliminar el directorio en el almacenamiento en el servidor local."
+  },
+  {
+    "id": "utils.file.remove_directory.s3.app_error",
+    "translation": "Se encontró un error al eliminar el directorio en S3."
+  },
+  {
+    "id": "utils.file.remove_file.configured.app_error",
+    "translation": "Almacenamiento de archivos no está correctamente configurado. Por favor, configurar, ya sea para S3 o almacenamiento de archivos en el servidor local."
+  },
+  {
+    "id": "utils.file.remove_file.local.app_error",
+    "translation": "Se encontró un error eliminar el archivo del almacenamiento en el servidor local"
+  },
+  {
+    "id": "utils.file.remove_file.s3.app_error",
+    "translation": "Se encontró un error al eliminar el archivo en S3."
   },
   {
     "id": "utils.i18n.loaded",
@@ -6248,10 +7039,6 @@
     "translation": "Autorizar Aplicación"
   },
   {
-    "id": "web.check_browser_compatibility.app_error",
-    "translation": "Tu navegador actual no está soportado, por favor actualiza a uno de los siguientes navegadores: Google Chrome 21 o superior, Internet Explorer 11 o superior, FireFox 14 o superior, Safari 9 o superior"
-  },
-  {
     "id": "web.claim_account.team.error",
     "translation": "No se encontro el equipo con nombre=%v, err=%v"
   },
@@ -6262,6 +7049,18 @@
   {
     "id": "web.claim_account.user.error",
     "translation": "No se encotró el usuario teamid=%v, email=%v, err=%v"
+  },
+  {
+    "id": "web.command_webhook.command.app_error",
+    "translation": "No se encontró el comando"
+  },
+  {
+    "id": "web.command_webhook.invalid.app_error",
+    "translation": "Webhook no válido"
+  },
+  {
+    "id": "web.command_webhook.parse.app_error",
+    "translation": "No se puede analizar la data entrante"
   },
   {
     "id": "web.create_dir.error",
@@ -6284,16 +7083,40 @@
     "translation": "Correo electrónico verificado"
   },
   {
+    "id": "web.error.unsupported_browser.help1",
+    "translation": "Google Chrome 43+"
+  },
+  {
+    "id": "web.error.unsupported_browser.help2",
+    "translation": "Mozilla Firefox 52+"
+  },
+  {
+    "id": "web.error.unsupported_browser.help3",
+    "translation": "Microsoft Internet Explorer 11+"
+  },
+  {
+    "id": "web.error.unsupported_browser.help4",
+    "translation": "Microsoft Edge 40+"
+  },
+  {
+    "id": "web.error.unsupported_browser.help5",
+    "translation": "Apple Safari 9+"
+  },
+  {
+    "id": "web.error.unsupported_browser.message",
+    "translation": "Tu navegador no es compatible. Por favor, actualiza a uno de los siguientes navegadores:"
+  },
+  {
+    "id": "web.error.unsupported_browser.title",
+    "translation": "Navegador No Compatible"
+  },
+  {
     "id": "web.find_team.title",
     "translation": "Encontrar Equipo"
   },
   {
     "id": "web.header.back",
     "translation": "Atrás"
-  },
-  {
-    "id": "web.incoming_webhook.attachment.app_error",
-    "translation": "La máxima longitud de los archivos adjuntos es de {{.Max}} caracteres, se recibió un tamaño de {{.Actual}}"
   },
   {
     "id": "web.incoming_webhook.channel.app_error",
@@ -6314,6 +7137,10 @@
   {
     "id": "web.incoming_webhook.permissions.app_error",
     "translation": "Permisos del canal inapropiados"
+  },
+  {
+    "id": "web.incoming_webhook.split_props_length.app_error",
+    "translation": "No puede dividir las propiedades del webhook en {{.Max}} caracteres."
   },
   {
     "id": "web.incoming_webhook.text.app_error",

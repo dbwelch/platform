@@ -4,27 +4,30 @@
 package app
 
 import (
+	"strings"
 	"testing"
 
-	"github.com/mattermost/platform/model"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
 func TestSendNotifications(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
 
-	AddUserToChannel(th.BasicUser2, th.BasicChannel)
+	th.App.AddUserToChannel(th.BasicUser2, th.BasicChannel)
 
-	post1, err := CreatePost(&model.Post{
+	post1, err := th.App.CreatePostMissingChannel(&model.Post{
 		UserId:    th.BasicUser.Id,
 		ChannelId: th.BasicChannel.Id,
 		Message:   "@" + th.BasicUser2.Username,
-	}, th.BasicTeam.Id, true)
+	}, true)
 
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	mentions, err := SendNotifications(post1, th.BasicTeam, th.BasicChannel, th.BasicUser)
+	mentions, err := th.App.SendNotifications(post1, th.BasicTeam, th.BasicChannel, th.BasicUser, nil)
 	if err != nil {
 		t.Fatal(err)
 	} else if mentions == nil {
@@ -35,40 +38,40 @@ func TestSendNotifications(t *testing.T) {
 		t.Fatal("user should have been mentioned")
 	}
 
-	dm, err := CreateDirectChannel(th.BasicUser.Id, th.BasicUser2.Id)
+	dm, err := th.App.CreateDirectChannel(th.BasicUser.Id, th.BasicUser2.Id)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	post2, err := CreatePost(&model.Post{
+	post2, err := th.App.CreatePostMissingChannel(&model.Post{
 		UserId:    th.BasicUser.Id,
 		ChannelId: dm.Id,
 		Message:   "dm message",
-	}, th.BasicTeam.Id, true)
+	}, true)
 
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_, err = SendNotifications(post2, th.BasicTeam, dm, th.BasicUser)
+	_, err = th.App.SendNotifications(post2, th.BasicTeam, dm, th.BasicUser, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	UpdateActive(th.BasicUser2, false)
-	InvalidateAllCaches()
+	th.App.UpdateActive(th.BasicUser2, false)
+	th.App.InvalidateAllCaches()
 
-	post3, err := CreatePost(&model.Post{
+	post3, err := th.App.CreatePostMissingChannel(&model.Post{
 		UserId:    th.BasicUser.Id,
 		ChannelId: dm.Id,
 		Message:   "dm message",
-	}, th.BasicTeam.Id, true)
+	}, true)
 
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_, err = SendNotifications(post3, th.BasicTeam, dm, th.BasicUser)
+	_, err = th.App.SendNotifications(post3, th.BasicTeam, dm, th.BasicUser, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,6 +200,30 @@ func TestGetExplicitMentions(t *testing.T) {
 	if mentions, _, _, _, _ := GetExplicitMentions(message, keywords); len(mentions) != 1 || !mentions[id1] || mentions[id2] || mentions[id3] {
 		t.Fatal("should've only mentioned aaa")
 	}
+
+	message = ":smile:"
+	keywords = map[string][]string{"smile": {id1}, "smiley": {id2}, "smiley_cat": {id3}}
+	if mentions, _, _, _, _ := GetExplicitMentions(message, keywords); len(mentions) == 1 || mentions[id1] {
+		t.Fatal("should not mentioned smile")
+	}
+
+	message = "smile"
+	keywords = map[string][]string{"smile": {id1}, "smiley": {id2}, "smiley_cat": {id3}}
+	if mentions, _, _, _, _ := GetExplicitMentions(message, keywords); len(mentions) != 1 || !mentions[id1] || mentions[id2] || mentions[id3] {
+		t.Fatal("should've only mentioned smile")
+	}
+
+	message = ":smile"
+	keywords = map[string][]string{"smile": {id1}, "smiley": {id2}, "smiley_cat": {id3}}
+	if mentions, _, _, _, _ := GetExplicitMentions(message, keywords); len(mentions) != 1 || !mentions[id1] || mentions[id2] || mentions[id3] {
+		t.Fatal("should've only mentioned smile")
+	}
+
+	message = "smile:"
+	keywords = map[string][]string{"smile": {id1}, "smiley": {id2}, "smiley_cat": {id3}}
+	if mentions, _, _, _, _ := GetExplicitMentions(message, keywords); len(mentions) != 1 || !mentions[id1] || mentions[id2] || mentions[id3] {
+		t.Fatal("should've only mentioned smile")
+	}
 }
 
 func TestGetExplicitMentionsAtHere(t *testing.T) {
@@ -227,7 +254,7 @@ func TestGetExplicitMentionsAtHere(t *testing.T) {
 		"\\@here\\": true,
 		"|@here|":   true,
 		";@here;":   true,
-		":@here:":   true,
+		":@here:":   false, // This case shouldn't trigger a mention since it follows the format of reactions e.g. :word:
 		"'@here'":   true,
 		"\"@here\"": true,
 		",@here,":   true,
@@ -380,7 +407,7 @@ func TestRemoveCodeFromMessage(t *testing.T) {
 		t.Fatalf("received incorrect output\n\nGot:\n%v\n\nExpected:\n%v\n", actual, expected)
 	}
 
-	input = "this is `not\n    \ncode` because it has line with only whitespace"
+	input = "this is `not\n    \ncode` because it has a line with only whitespace"
 	expected = input
 	if actual := removeCodeFromMessage(input); actual != expected {
 		t.Fatalf("received incorrect output\n\nGot:\n%v\n\nExpected:\n%v\n", actual, expected)
@@ -391,10 +418,24 @@ func TestRemoveCodeFromMessage(t *testing.T) {
 	if actual := removeCodeFromMessage(input); actual != expected {
 		t.Fatalf("received incorrect output\n\nGot:\n%v\n\nExpected:\n%v\n", actual, expected)
 	}
+
+	input = "these are ``multiple backquotes`` around code"
+	expected = "these are   around code"
+	if actual := removeCodeFromMessage(input); actual != expected {
+		t.Fatalf("received incorrect output\n\nGot:\n%v\n\nExpected:\n%v\n", actual, expected)
+	}
+
+	input = "this is text with\n~~~\na code block\n~~~\nin it"
+	expected = "this is text with\n\nin it"
+	if actual := removeCodeFromMessage(input); actual != expected {
+		t.Fatalf("received incorrect output\n\nGot:\n%v\n\nExpected:\n%v\n", actual, expected)
+	}
 }
 
 func TestGetMentionKeywords(t *testing.T) {
-	Setup()
+	th := Setup()
+	defer th.TearDown()
+
 	// user with username or custom mentions enabled
 	user1 := &model.User{
 		Id:        model.NewId(),
@@ -406,7 +447,7 @@ func TestGetMentionKeywords(t *testing.T) {
 	}
 
 	profiles := map[string]*model.User{user1.Id: user1}
-	mentions := GetMentionKeywordsInChannel(profiles)
+	mentions := th.App.GetMentionKeywordsInChannel(profiles, true)
 	if len(mentions) != 3 {
 		t.Fatal("should've returned three mention keywords")
 	} else if ids, ok := mentions["user"]; !ok || ids[0] != user1.Id {
@@ -428,7 +469,7 @@ func TestGetMentionKeywords(t *testing.T) {
 	}
 
 	profiles = map[string]*model.User{user2.Id: user2}
-	mentions = GetMentionKeywordsInChannel(profiles)
+	mentions = th.App.GetMentionKeywordsInChannel(profiles, true)
 	if len(mentions) != 2 {
 		t.Fatal("should've returned two mention keyword")
 	} else if ids, ok := mentions["First"]; !ok || ids[0] != user2.Id {
@@ -446,7 +487,7 @@ func TestGetMentionKeywords(t *testing.T) {
 	}
 
 	profiles = map[string]*model.User{user3.Id: user3}
-	mentions = GetMentionKeywordsInChannel(profiles)
+	mentions = th.App.GetMentionKeywordsInChannel(profiles, true)
 	if len(mentions) != 3 {
 		t.Fatal("should've returned three mention keywords")
 	} else if ids, ok := mentions["@channel"]; !ok || ids[0] != user3.Id {
@@ -468,7 +509,7 @@ func TestGetMentionKeywords(t *testing.T) {
 	}
 
 	profiles = map[string]*model.User{user4.Id: user4}
-	mentions = GetMentionKeywordsInChannel(profiles)
+	mentions = th.App.GetMentionKeywordsInChannel(profiles, true)
 	if len(mentions) != 6 {
 		t.Fatal("should've returned six mention keywords")
 	} else if ids, ok := mentions["user"]; !ok || ids[0] != user4.Id {
@@ -503,14 +544,15 @@ func TestGetMentionKeywords(t *testing.T) {
 		return duplicate_frequency
 	}
 
-	// multiple users
+	// multiple users but no more than MaxNotificationsPerChannel
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.TeamSettings.MaxNotificationsPerChannel = 4 })
 	profiles = map[string]*model.User{
 		user1.Id: user1,
 		user2.Id: user2,
 		user3.Id: user3,
 		user4.Id: user4,
 	}
-	mentions = GetMentionKeywordsInChannel(profiles)
+	mentions = th.App.GetMentionKeywordsInChannel(profiles, true)
 	if len(mentions) != 6 {
 		t.Fatal("should've returned six mention keywords")
 	} else if ids, ok := mentions["user"]; !ok || len(ids) != 2 || (ids[0] != user1.Id && ids[1] != user1.Id) || (ids[0] != user4.Id && ids[1] != user4.Id) {
@@ -520,11 +562,47 @@ func TestGetMentionKeywords(t *testing.T) {
 	} else if ids, ok := mentions["mention"]; !ok || len(ids) != 2 || (ids[0] != user1.Id && ids[1] != user1.Id) || (ids[0] != user4.Id && ids[1] != user4.Id) {
 		t.Fatal("should've mentioned user1 and user4 with mention")
 	} else if ids, ok := mentions["First"]; !ok || len(ids) != 2 || (ids[0] != user2.Id && ids[1] != user2.Id) || (ids[0] != user4.Id && ids[1] != user4.Id) {
-		t.Fatal("should've mentioned user2 and user4 with mention")
+		t.Fatal("should've mentioned user2 and user4 with First")
 	} else if ids, ok := mentions["@channel"]; !ok || len(ids) != 2 || (ids[0] != user3.Id && ids[1] != user3.Id) || (ids[0] != user4.Id && ids[1] != user4.Id) {
 		t.Fatal("should've mentioned user3 and user4 with @channel")
 	} else if ids, ok := mentions["@all"]; !ok || len(ids) != 2 || (ids[0] != user3.Id && ids[1] != user3.Id) || (ids[0] != user4.Id && ids[1] != user4.Id) {
 		t.Fatal("should've mentioned user3 and user4 with @all")
+	}
+
+	// multiple users and more than MaxNotificationsPerChannel
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.TeamSettings.MaxNotificationsPerChannel = 3 })
+	mentions = th.App.GetMentionKeywordsInChannel(profiles, true)
+	if len(mentions) != 4 {
+		t.Fatal("should've returned four mention keywords")
+	} else if _, ok := mentions["@channel"]; ok {
+		t.Fatal("should not have mentioned any user with @channel")
+	} else if _, ok := mentions["@all"]; ok {
+		t.Fatal("should not have mentioned any user with @all")
+	} else if _, ok := mentions["@here"]; ok {
+		t.Fatal("should not have mentioned any user with @here")
+	}
+
+	// no special mentions
+	profiles = map[string]*model.User{
+		user1.Id: user1,
+	}
+	mentions = th.App.GetMentionKeywordsInChannel(profiles, false)
+	if len(mentions) != 3 {
+		t.Fatal("should've returned three mention keywords")
+	} else if ids, ok := mentions["user"]; !ok || len(ids) != 1 || ids[0] != user1.Id {
+		t.Fatal("should've mentioned user1 with user")
+	} else if ids, ok := mentions["@user"]; !ok || len(ids) != 2 || ids[0] != user1.Id || ids[1] != user1.Id {
+		t.Fatal("should've mentioned user1 twice with @user")
+	} else if ids, ok := mentions["mention"]; !ok || len(ids) != 1 || ids[0] != user1.Id {
+		t.Fatal("should've mentioned user1 with mention")
+	} else if _, ok := mentions["First"]; ok {
+		t.Fatal("should not have mentioned user1 with First")
+	} else if _, ok := mentions["@channel"]; ok {
+		t.Fatal("should not have mentioned any user with @channel")
+	} else if _, ok := mentions["@all"]; ok {
+		t.Fatal("should not have mentioned any user with @all")
+	} else if _, ok := mentions["@here"]; ok {
+		t.Fatal("should not have mentioned any user with @here")
 	}
 }
 
@@ -732,6 +810,7 @@ func TestDoesStatusAllowPushNotification(t *testing.T) {
 	offline := &model.Status{UserId: userId, Status: model.STATUS_OFFLINE, Manual: false, LastActivityAt: 0, ActiveChannel: ""}
 	away := &model.Status{UserId: userId, Status: model.STATUS_AWAY, Manual: false, LastActivityAt: 0, ActiveChannel: ""}
 	online := &model.Status{UserId: userId, Status: model.STATUS_ONLINE, Manual: false, LastActivityAt: model.GetMillis(), ActiveChannel: ""}
+	dnd := &model.Status{UserId: userId, Status: model.STATUS_DND, Manual: true, LastActivityAt: model.GetMillis(), ActiveChannel: ""}
 
 	userNotifyProps["push_status"] = model.STATUS_ONLINE
 	// WHEN props is ONLINE and user is offline
@@ -758,6 +837,15 @@ func TestDoesStatusAllowPushNotification(t *testing.T) {
 	}
 
 	if DoesStatusAllowPushNotification(userNotifyProps, online, "") {
+		t.Fatal("Should have been false")
+	}
+
+	// WHEN props is ONLINE and user is dnd
+	if DoesStatusAllowPushNotification(userNotifyProps, dnd, channelId) {
+		t.Fatal("Should have been false")
+	}
+
+	if DoesStatusAllowPushNotification(userNotifyProps, dnd, "") {
 		t.Fatal("Should have been false")
 	}
 
@@ -789,8 +877,17 @@ func TestDoesStatusAllowPushNotification(t *testing.T) {
 		t.Fatal("Should have been false")
 	}
 
+	// WHEN props is AWAY and user is dnd
+	if DoesStatusAllowPushNotification(userNotifyProps, dnd, channelId) {
+		t.Fatal("Should have been false")
+	}
+
+	if DoesStatusAllowPushNotification(userNotifyProps, dnd, "") {
+		t.Fatal("Should have been false")
+	}
+
 	userNotifyProps["push_status"] = model.STATUS_OFFLINE
-	// WHEN props is AWAY and user is offline
+	// WHEN props is OFFLINE and user is offline
 	if !DoesStatusAllowPushNotification(userNotifyProps, offline, channelId) {
 		t.Fatal("Should have been true")
 	}
@@ -799,7 +896,7 @@ func TestDoesStatusAllowPushNotification(t *testing.T) {
 		t.Fatal("Should have been true")
 	}
 
-	// WHEN props is AWAY and user is away
+	// WHEN props is OFFLINE and user is away
 	if DoesStatusAllowPushNotification(userNotifyProps, away, channelId) {
 		t.Fatal("Should have been false")
 	}
@@ -808,12 +905,326 @@ func TestDoesStatusAllowPushNotification(t *testing.T) {
 		t.Fatal("Should have been false")
 	}
 
-	// WHEN props is AWAY and user is online
+	// WHEN props is OFFLINE and user is online
 	if DoesStatusAllowPushNotification(userNotifyProps, online, channelId) {
 		t.Fatal("Should have been false")
 	}
 
 	if DoesStatusAllowPushNotification(userNotifyProps, online, "") {
 		t.Fatal("Should have been false")
+	}
+
+	// WHEN props is OFFLINE and user is dnd
+	if DoesStatusAllowPushNotification(userNotifyProps, dnd, channelId) {
+		t.Fatal("Should have been false")
+	}
+
+	if DoesStatusAllowPushNotification(userNotifyProps, dnd, "") {
+		t.Fatal("Should have been false")
+	}
+
+}
+
+func TestGetDirectMessageNotificationEmailSubject(t *testing.T) {
+	th := Setup()
+	defer th.TearDown()
+
+	expectedPrefix := "[http://localhost:8065] New Direct Message from sender on"
+	post := &model.Post{
+		CreateAt: 1501804801000,
+	}
+	translateFunc := utils.GetUserTranslations("en")
+	subject := getDirectMessageNotificationEmailSubject(post, translateFunc, "http://localhost:8065", "sender")
+	if !strings.HasPrefix(subject, expectedPrefix) {
+		t.Fatal("Expected subject line prefix '" + expectedPrefix + "', got " + subject)
+	}
+}
+
+func TestGetNotificationEmailSubject(t *testing.T) {
+	th := Setup()
+	defer th.TearDown()
+
+	expectedPrefix := "[http://localhost:8065] Notification in team on"
+	post := &model.Post{
+		CreateAt: 1501804801000,
+	}
+	translateFunc := utils.GetUserTranslations("en")
+	subject := getNotificationEmailSubject(post, translateFunc, "http://localhost:8065", "team")
+	if !strings.HasPrefix(subject, expectedPrefix) {
+		t.Fatal("Expected subject line prefix '" + expectedPrefix + "', got " + subject)
+	}
+}
+
+func TestGetNotificationEmailBodyFullNotificationPublicChannel(t *testing.T) {
+	th := Setup()
+	defer th.TearDown()
+
+	recipient := &model.User{}
+	post := &model.Post{
+		Message: "This is the message",
+	}
+	channel := &model.Channel{
+		DisplayName: "ChannelName",
+		Type:        model.CHANNEL_OPEN,
+	}
+	senderName := "sender"
+	teamName := "team"
+	teamURL := "http://localhost:8065/" + teamName
+	emailNotificationContentsType := model.EMAIL_NOTIFICATION_CONTENTS_FULL
+	translateFunc := utils.GetUserTranslations("en")
+
+	body := th.App.getNotificationEmailBody(recipient, post, channel, senderName, teamName, teamURL, emailNotificationContentsType, translateFunc)
+	if !strings.Contains(body, "You have a new notification.") {
+		t.Fatal("Expected email text 'You have a new notification. Got " + body)
+	}
+	if !strings.Contains(body, "CHANNEL: "+channel.DisplayName) {
+		t.Fatal("Expected email text 'CHANNEL: " + channel.DisplayName + "'. Got " + body)
+	}
+	if !strings.Contains(body, senderName+" - ") {
+		t.Fatal("Expected email text '" + senderName + " - '. Got " + body)
+	}
+	if !strings.Contains(body, post.Message) {
+		t.Fatal("Expected email text '" + post.Message + "'. Got " + body)
+	}
+	if !strings.Contains(body, teamURL) {
+		t.Fatal("Expected email text '" + teamURL + "'. Got " + body)
+	}
+}
+
+func TestGetNotificationEmailBodyFullNotificationGroupChannel(t *testing.T) {
+	th := Setup()
+	defer th.TearDown()
+
+	recipient := &model.User{}
+	post := &model.Post{
+		Message: "This is the message",
+	}
+	channel := &model.Channel{
+		DisplayName: "ChannelName",
+		Type:        model.CHANNEL_GROUP,
+	}
+	senderName := "sender"
+	teamName := "team"
+	teamURL := "http://localhost:8065/" + teamName
+	emailNotificationContentsType := model.EMAIL_NOTIFICATION_CONTENTS_FULL
+	translateFunc := utils.GetUserTranslations("en")
+
+	body := th.App.getNotificationEmailBody(recipient, post, channel, senderName, teamName, teamURL, emailNotificationContentsType, translateFunc)
+	if !strings.Contains(body, "You have a new notification.") {
+		t.Fatal("Expected email text 'You have a new notification. Got " + body)
+	}
+	if !strings.Contains(body, "CHANNEL: Group Message") {
+		t.Fatal("Expected email text 'CHANNEL: Group Message'. Got " + body)
+	}
+	if !strings.Contains(body, senderName+" - ") {
+		t.Fatal("Expected email text '" + senderName + " - '. Got " + body)
+	}
+	if !strings.Contains(body, post.Message) {
+		t.Fatal("Expected email text '" + post.Message + "'. Got " + body)
+	}
+	if !strings.Contains(body, teamURL) {
+		t.Fatal("Expected email text '" + teamURL + "'. Got " + body)
+	}
+}
+
+func TestGetNotificationEmailBodyFullNotificationPrivateChannel(t *testing.T) {
+	th := Setup()
+	defer th.TearDown()
+
+	recipient := &model.User{}
+	post := &model.Post{
+		Message: "This is the message",
+	}
+	channel := &model.Channel{
+		DisplayName: "ChannelName",
+		Type:        model.CHANNEL_PRIVATE,
+	}
+	senderName := "sender"
+	teamName := "team"
+	teamURL := "http://localhost:8065/" + teamName
+	emailNotificationContentsType := model.EMAIL_NOTIFICATION_CONTENTS_FULL
+	translateFunc := utils.GetUserTranslations("en")
+
+	body := th.App.getNotificationEmailBody(recipient, post, channel, senderName, teamName, teamURL, emailNotificationContentsType, translateFunc)
+	if !strings.Contains(body, "You have a new notification.") {
+		t.Fatal("Expected email text 'You have a new notification. Got " + body)
+	}
+	if !strings.Contains(body, "CHANNEL: "+channel.DisplayName) {
+		t.Fatal("Expected email text 'CHANNEL: " + channel.DisplayName + "'. Got " + body)
+	}
+	if !strings.Contains(body, senderName+" - ") {
+		t.Fatal("Expected email text '" + senderName + " - '. Got " + body)
+	}
+	if !strings.Contains(body, post.Message) {
+		t.Fatal("Expected email text '" + post.Message + "'. Got " + body)
+	}
+	if !strings.Contains(body, teamURL) {
+		t.Fatal("Expected email text '" + teamURL + "'. Got " + body)
+	}
+}
+
+func TestGetNotificationEmailBodyFullNotificationDirectChannel(t *testing.T) {
+	th := Setup()
+	defer th.TearDown()
+
+	recipient := &model.User{}
+	post := &model.Post{
+		Message: "This is the message",
+	}
+	channel := &model.Channel{
+		DisplayName: "ChannelName",
+		Type:        model.CHANNEL_DIRECT,
+	}
+	senderName := "sender"
+	teamName := "team"
+	teamURL := "http://localhost:8065/" + teamName
+	emailNotificationContentsType := model.EMAIL_NOTIFICATION_CONTENTS_FULL
+	translateFunc := utils.GetUserTranslations("en")
+
+	body := th.App.getNotificationEmailBody(recipient, post, channel, senderName, teamName, teamURL, emailNotificationContentsType, translateFunc)
+	if !strings.Contains(body, "You have a new direct message.") {
+		t.Fatal("Expected email text 'You have a new direct message. Got " + body)
+	}
+	if !strings.Contains(body, senderName+" - ") {
+		t.Fatal("Expected email text '" + senderName + " - '. Got " + body)
+	}
+	if !strings.Contains(body, post.Message) {
+		t.Fatal("Expected email text '" + post.Message + "'. Got " + body)
+	}
+	if !strings.Contains(body, teamURL) {
+		t.Fatal("Expected email text '" + teamURL + "'. Got " + body)
+	}
+}
+
+// from here
+func TestGetNotificationEmailBodyGenericNotificationPublicChannel(t *testing.T) {
+	th := Setup()
+	defer th.TearDown()
+
+	recipient := &model.User{}
+	post := &model.Post{
+		Message: "This is the message",
+	}
+	channel := &model.Channel{
+		DisplayName: "ChannelName",
+		Type:        model.CHANNEL_OPEN,
+	}
+	senderName := "sender"
+	teamName := "team"
+	teamURL := "http://localhost:8065/" + teamName
+	emailNotificationContentsType := model.EMAIL_NOTIFICATION_CONTENTS_GENERIC
+	translateFunc := utils.GetUserTranslations("en")
+
+	body := th.App.getNotificationEmailBody(recipient, post, channel, senderName, teamName, teamURL, emailNotificationContentsType, translateFunc)
+	if !strings.Contains(body, "You have a new notification from "+senderName) {
+		t.Fatal("Expected email text 'You have a new notification from " + senderName + "'. Got " + body)
+	}
+	if strings.Contains(body, "CHANNEL: "+channel.DisplayName) {
+		t.Fatal("Did not expect email text 'CHANNEL: " + channel.DisplayName + "'. Got " + body)
+	}
+	if strings.Contains(body, post.Message) {
+		t.Fatal("Did not expect email text '" + post.Message + "'. Got " + body)
+	}
+	if !strings.Contains(body, teamURL) {
+		t.Fatal("Expected email text '" + teamURL + "'. Got " + body)
+	}
+}
+
+func TestGetNotificationEmailBodyGenericNotificationGroupChannel(t *testing.T) {
+	th := Setup()
+	defer th.TearDown()
+
+	recipient := &model.User{}
+	post := &model.Post{
+		Message: "This is the message",
+	}
+	channel := &model.Channel{
+		DisplayName: "ChannelName",
+		Type:        model.CHANNEL_GROUP,
+	}
+	senderName := "sender"
+	teamName := "team"
+	teamURL := "http://localhost:8065/" + teamName
+	emailNotificationContentsType := model.EMAIL_NOTIFICATION_CONTENTS_GENERIC
+	translateFunc := utils.GetUserTranslations("en")
+
+	body := th.App.getNotificationEmailBody(recipient, post, channel, senderName, teamName, teamURL, emailNotificationContentsType, translateFunc)
+	if !strings.Contains(body, "You have a new notification from "+senderName) {
+		t.Fatal("Expected email text 'You have a new notification from " + senderName + "'. Got " + body)
+	}
+	if strings.Contains(body, "CHANNEL: "+channel.DisplayName) {
+		t.Fatal("Did not expect email text 'CHANNEL: " + channel.DisplayName + "'. Got " + body)
+	}
+	if strings.Contains(body, post.Message) {
+		t.Fatal("Did not expect email text '" + post.Message + "'. Got " + body)
+	}
+	if !strings.Contains(body, teamURL) {
+		t.Fatal("Expected email text '" + teamURL + "'. Got " + body)
+	}
+}
+
+func TestGetNotificationEmailBodyGenericNotificationPrivateChannel(t *testing.T) {
+	th := Setup()
+	defer th.TearDown()
+
+	recipient := &model.User{}
+	post := &model.Post{
+		Message: "This is the message",
+	}
+	channel := &model.Channel{
+		DisplayName: "ChannelName",
+		Type:        model.CHANNEL_PRIVATE,
+	}
+	senderName := "sender"
+	teamName := "team"
+	teamURL := "http://localhost:8065/" + teamName
+	emailNotificationContentsType := model.EMAIL_NOTIFICATION_CONTENTS_GENERIC
+	translateFunc := utils.GetUserTranslations("en")
+
+	body := th.App.getNotificationEmailBody(recipient, post, channel, senderName, teamName, teamURL, emailNotificationContentsType, translateFunc)
+	if !strings.Contains(body, "You have a new notification from "+senderName) {
+		t.Fatal("Expected email text 'You have a new notification from " + senderName + "'. Got " + body)
+	}
+	if strings.Contains(body, "CHANNEL: "+channel.DisplayName) {
+		t.Fatal("Did not expect email text 'CHANNEL: " + channel.DisplayName + "'. Got " + body)
+	}
+	if strings.Contains(body, post.Message) {
+		t.Fatal("Did not expect email text '" + post.Message + "'. Got " + body)
+	}
+	if !strings.Contains(body, teamURL) {
+		t.Fatal("Expected email text '" + teamURL + "'. Got " + body)
+	}
+}
+
+func TestGetNotificationEmailBodyGenericNotificationDirectChannel(t *testing.T) {
+	th := Setup()
+	defer th.TearDown()
+
+	recipient := &model.User{}
+	post := &model.Post{
+		Message: "This is the message",
+	}
+	channel := &model.Channel{
+		DisplayName: "ChannelName",
+		Type:        model.CHANNEL_DIRECT,
+	}
+	senderName := "sender"
+	teamName := "team"
+	teamURL := "http://localhost:8065/" + teamName
+	emailNotificationContentsType := model.EMAIL_NOTIFICATION_CONTENTS_GENERIC
+	translateFunc := utils.GetUserTranslations("en")
+
+	body := th.App.getNotificationEmailBody(recipient, post, channel, senderName, teamName, teamURL, emailNotificationContentsType, translateFunc)
+	if !strings.Contains(body, "You have a new direct message from "+senderName) {
+		t.Fatal("Expected email text 'You have a new direct message from " + senderName + "'. Got " + body)
+	}
+	if strings.Contains(body, "CHANNEL: "+channel.DisplayName) {
+		t.Fatal("Did not expect email text 'CHANNEL: " + channel.DisplayName + "'. Got " + body)
+	}
+	if strings.Contains(body, post.Message) {
+		t.Fatal("Did not expect email text '" + post.Message + "'. Got " + body)
+	}
+	if !strings.Contains(body, teamURL) {
+		t.Fatal("Expected email text '" + teamURL + "'. Got " + body)
 	}
 }

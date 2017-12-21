@@ -7,17 +7,23 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/mattermost/platform/einterfaces"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
-func CheckPasswordAndAllCriteria(user *model.User, password string, mfaToken string) *model.AppError {
-	if err := CheckUserAdditionalAuthenticationCriteria(user, mfaToken); err != nil {
+func (a *App) IsPasswordValid(password string) *model.AppError {
+	if utils.IsLicensed() && *utils.License().Features.PasswordRequirements {
+		return utils.IsPasswordValidWithSettings(password, &a.Config().PasswordSettings)
+	}
+	return utils.IsPasswordValid(password)
+}
+
+func (a *App) CheckPasswordAndAllCriteria(user *model.User, password string, mfaToken string) *model.AppError {
+	if err := a.CheckUserAdditionalAuthenticationCriteria(user, mfaToken); err != nil {
 		return err
 	}
 
-	if err := checkUserPassword(user, password); err != nil {
+	if err := a.checkUserPassword(user, password); err != nil {
 		return err
 	}
 
@@ -25,27 +31,27 @@ func CheckPasswordAndAllCriteria(user *model.User, password string, mfaToken str
 }
 
 // This to be used for places we check the users password when they are already logged in
-func doubleCheckPassword(user *model.User, password string) *model.AppError {
-	if err := checkUserLoginAttempts(user); err != nil {
+func (a *App) doubleCheckPassword(user *model.User, password string) *model.AppError {
+	if err := checkUserLoginAttempts(user, *a.Config().ServiceSettings.MaximumLoginAttempts); err != nil {
 		return err
 	}
 
-	if err := checkUserPassword(user, password); err != nil {
+	if err := a.checkUserPassword(user, password); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func checkUserPassword(user *model.User, password string) *model.AppError {
+func (a *App) checkUserPassword(user *model.User, password string) *model.AppError {
 	if !model.ComparePassword(user.Password, password) {
-		if result := <-Srv.Store.User().UpdateFailedPasswordAttempts(user.Id, user.FailedAttempts+1); result.Err != nil {
+		if result := <-a.Srv.Store.User().UpdateFailedPasswordAttempts(user.Id, user.FailedAttempts+1); result.Err != nil {
 			return result.Err
 		}
 
 		return model.NewAppError("checkUserPassword", "api.user.check_user_password.invalid.app_error", nil, "user_id="+user.Id, http.StatusUnauthorized)
 	} else {
-		if result := <-Srv.Store.User().UpdateFailedPasswordAttempts(user.Id, 0); result.Err != nil {
+		if result := <-a.Srv.Store.User().UpdateFailedPasswordAttempts(user.Id, 0); result.Err != nil {
 			return result.Err
 		}
 
@@ -53,23 +59,21 @@ func checkUserPassword(user *model.User, password string) *model.AppError {
 	}
 }
 
-func checkLdapUserPasswordAndAllCriteria(ldapId *string, password string, mfaToken string) (*model.User, *model.AppError) {
-	ldapInterface := einterfaces.GetLdapInterface()
-
-	if ldapInterface == nil || ldapId == nil {
+func (a *App) checkLdapUserPasswordAndAllCriteria(ldapId *string, password string, mfaToken string) (*model.User, *model.AppError) {
+	if a.Ldap == nil || ldapId == nil {
 		err := model.NewAppError("doLdapAuthentication", "api.user.login_ldap.not_available.app_error", nil, "", http.StatusNotImplemented)
 		return nil, err
 	}
 
 	var user *model.User
-	if ldapUser, err := ldapInterface.DoLogin(*ldapId, password); err != nil {
+	if ldapUser, err := a.Ldap.DoLogin(*ldapId, password); err != nil {
 		err.StatusCode = http.StatusUnauthorized
 		return nil, err
 	} else {
 		user = ldapUser
 	}
 
-	if err := CheckUserMfa(user, mfaToken); err != nil {
+	if err := a.CheckUserMfa(user, mfaToken); err != nil {
 		return nil, err
 	}
 
@@ -81,37 +85,36 @@ func checkLdapUserPasswordAndAllCriteria(ldapId *string, password string, mfaTok
 	return user, nil
 }
 
-func CheckUserAdditionalAuthenticationCriteria(user *model.User, mfaToken string) *model.AppError {
-	if err := CheckUserMfa(user, mfaToken); err != nil {
+func (a *App) CheckUserAdditionalAuthenticationCriteria(user *model.User, mfaToken string) *model.AppError {
+	if err := a.CheckUserMfa(user, mfaToken); err != nil {
 		return err
 	}
 
-	if err := checkEmailVerified(user); err != nil {
-		return err
+	if !user.EmailVerified && a.Config().EmailSettings.RequireEmailVerification {
+		return model.NewAppError("Login", "api.user.login.not_verified.app_error", nil, "user_id="+user.Id, http.StatusUnauthorized)
 	}
 
 	if err := checkUserNotDisabled(user); err != nil {
 		return err
 	}
 
-	if err := checkUserLoginAttempts(user); err != nil {
+	if err := checkUserLoginAttempts(user, *a.Config().ServiceSettings.MaximumLoginAttempts); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func CheckUserMfa(user *model.User, token string) *model.AppError {
-	if !user.MfaActive || !utils.IsLicensed || !*utils.License.Features.MFA || !*utils.Cfg.ServiceSettings.EnableMultifactorAuthentication {
+func (a *App) CheckUserMfa(user *model.User, token string) *model.AppError {
+	if !user.MfaActive || !utils.IsLicensed() || !*utils.License().Features.MFA || !*a.Config().ServiceSettings.EnableMultifactorAuthentication {
 		return nil
 	}
 
-	mfaInterface := einterfaces.GetMfaInterface()
-	if mfaInterface == nil {
+	if a.Mfa == nil {
 		return model.NewAppError("checkUserMfa", "api.user.check_user_mfa.not_available.app_error", nil, "", http.StatusNotImplemented)
 	}
 
-	if ok, err := mfaInterface.ValidateToken(user.MfaSecret, token); err != nil {
+	if ok, err := a.Mfa.ValidateToken(user.MfaSecret, token); err != nil {
 		return err
 	} else if !ok {
 		return model.NewAppError("checkUserMfa", "api.user.check_user_mfa.bad_code.app_error", nil, "", http.StatusUnauthorized)
@@ -120,18 +123,11 @@ func CheckUserMfa(user *model.User, token string) *model.AppError {
 	return nil
 }
 
-func checkUserLoginAttempts(user *model.User) *model.AppError {
-	if user.FailedAttempts >= utils.Cfg.ServiceSettings.MaximumLoginAttempts {
+func checkUserLoginAttempts(user *model.User, max int) *model.AppError {
+	if user.FailedAttempts >= max {
 		return model.NewAppError("checkUserLoginAttempts", "api.user.check_user_login_attempts.too_many.app_error", nil, "user_id="+user.Id, http.StatusUnauthorized)
 	}
 
-	return nil
-}
-
-func checkEmailVerified(user *model.User) *model.AppError {
-	if !user.EmailVerified && utils.Cfg.EmailSettings.RequireEmailVerification {
-		return model.NewAppError("Login", "api.user.login.not_verified.app_error", nil, "user_id="+user.Id, http.StatusUnauthorized)
-	}
 	return nil
 }
 
@@ -142,14 +138,14 @@ func checkUserNotDisabled(user *model.User) *model.AppError {
 	return nil
 }
 
-func authenticateUser(user *model.User, password, mfaToken string) (*model.User, *model.AppError) {
-	ldapAvailable := *utils.Cfg.LdapSettings.Enable && einterfaces.GetLdapInterface() != nil && utils.IsLicensed && *utils.License.Features.LDAP
+func (a *App) authenticateUser(user *model.User, password, mfaToken string) (*model.User, *model.AppError) {
+	ldapAvailable := *a.Config().LdapSettings.Enable && a.Ldap != nil && utils.IsLicensed() && *utils.License().Features.LDAP
 
 	if user.AuthService == model.USER_AUTH_SERVICE_LDAP {
 		if !ldapAvailable {
 			err := model.NewAppError("login", "api.user.login_ldap.not_available.app_error", nil, "", http.StatusNotImplemented)
 			return user, err
-		} else if ldapUser, err := checkLdapUserPasswordAndAllCriteria(user.AuthData, password, mfaToken); err != nil {
+		} else if ldapUser, err := a.checkLdapUserPasswordAndAllCriteria(user.AuthData, password, mfaToken); err != nil {
 			err.StatusCode = http.StatusUnauthorized
 			return user, err
 		} else {
@@ -164,7 +160,7 @@ func authenticateUser(user *model.User, password, mfaToken string) (*model.User,
 		err := model.NewAppError("login", "api.user.login.use_auth_service.app_error", map[string]interface{}{"AuthService": authService}, "", http.StatusBadRequest)
 		return user, err
 	} else {
-		if err := CheckPasswordAndAllCriteria(user, password, mfaToken); err != nil {
+		if err := a.CheckPasswordAndAllCriteria(user, password, mfaToken); err != nil {
 			err.StatusCode = http.StatusUnauthorized
 			return user, err
 		} else {

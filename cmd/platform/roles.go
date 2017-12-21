@@ -5,7 +5,6 @@ package main
 import (
 	"errors"
 
-	"github.com/mattermost/platform/app"
 	"github.com/spf13/cobra"
 )
 
@@ -38,7 +37,8 @@ func init() {
 }
 
 func makeSystemAdminCmdF(cmd *cobra.Command, args []string) error {
-	if err := initDBCommandContextCobra(cmd); err != nil {
+	a, err := initDBCommandContextCobra(cmd)
+	if err != nil {
 		return err
 	}
 
@@ -46,13 +46,13 @@ func makeSystemAdminCmdF(cmd *cobra.Command, args []string) error {
 		return errors.New("Enter at least one user.")
 	}
 
-	users := getUsersFromUserArgs(args)
+	users := getUsersFromUserArgs(a, args)
 	for i, user := range users {
 		if user == nil {
 			return errors.New("Unable to find user '" + args[i] + "'")
 		}
 
-		if _, err := app.UpdateUserRoles(user.Id, "system_admin system_user"); err != nil {
+		if _, err := a.UpdateUserRoles(user.Id, "system_admin system_user", true); err != nil {
 			return err
 		}
 	}
@@ -61,7 +61,8 @@ func makeSystemAdminCmdF(cmd *cobra.Command, args []string) error {
 }
 
 func makeMemberCmdF(cmd *cobra.Command, args []string) error {
-	if err := initDBCommandContextCobra(cmd); err != nil {
+	a, err := initDBCommandContextCobra(cmd)
+	if err != nil {
 		return err
 	}
 
@@ -69,13 +70,13 @@ func makeMemberCmdF(cmd *cobra.Command, args []string) error {
 		return errors.New("Enter at least one user.")
 	}
 
-	users := getUsersFromUserArgs(args)
+	users := getUsersFromUserArgs(a, args)
 	for i, user := range users {
 		if user == nil {
 			return errors.New("Unable to find user '" + args[i] + "'")
 		}
 
-		if _, err := app.UpdateUserRoles(user.Id, "system_user"); err != nil {
+		if _, err := a.UpdateUserRoles(user.Id, "system_user", true); err != nil {
 			return err
 		}
 	}

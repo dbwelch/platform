@@ -6,11 +6,12 @@ package api
 import (
 	"testing"
 
-	"github.com/mattermost/platform/model"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 func TestSaveReaction(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
 
 	Client := th.BasicClient
 
@@ -142,6 +143,7 @@ func TestSaveReaction(t *testing.T) {
 
 func TestDeleteReaction(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
 
 	Client := th.BasicClient
 
@@ -231,6 +233,7 @@ func TestDeleteReaction(t *testing.T) {
 
 func TestListReactions(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
 
 	Client := th.BasicClient
 

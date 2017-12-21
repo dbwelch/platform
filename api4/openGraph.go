@@ -7,23 +7,22 @@ import (
 	"net/http"
 
 	l4g "github.com/alecthomas/log4go"
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
 const OPEN_GRAPH_METADATA_CACHE_SIZE = 10000
 
 var openGraphDataCache = utils.NewLru(OPEN_GRAPH_METADATA_CACHE_SIZE)
 
-func InitOpenGraph() {
+func (api *API) InitOpenGraph() {
 	l4g.Debug(utils.T("api.opengraph.init.debug"))
 
-	BaseRoutes.OpenGraph.Handle("", ApiSessionRequired(getOpenGraphMetadata)).Methods("POST")
+	api.BaseRoutes.OpenGraph.Handle("", api.ApiSessionRequired(getOpenGraphMetadata)).Methods("POST")
 }
 
 func getOpenGraphMetadata(c *Context, w http.ResponseWriter, r *http.Request) {
-	if !*utils.Cfg.ServiceSettings.EnableLinkPreviews {
+	if !*c.App.Config().ServiceSettings.EnableLinkPreviews {
 		c.Err = model.NewAppError("getOpenGraphMetadata", "api.post.link_preview_disabled.app_error", nil, "", http.StatusNotImplemented)
 		return
 	}
@@ -43,7 +42,7 @@ func getOpenGraphMetadata(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	og := app.GetOpenGraphMetadata(url)
+	og := c.App.GetOpenGraphMetadata(url)
 
 	ogJSON, err := og.ToJSON()
 	openGraphDataCache.AddWithExpiresInSecs(props["url"], ogJSON, 3600) // Cache would expire after 1 hour

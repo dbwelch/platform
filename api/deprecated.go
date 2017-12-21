@@ -5,11 +5,11 @@ package api
 
 import (
 	l4g "github.com/alecthomas/log4go"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
 // ONLY FOR APIs SCHEDULED TO BE DEPRECATED
 
-func InitDeprecated() {
+func (api *API) InitDeprecated() {
 	l4g.Debug(utils.T("api.deprecated.init.debug"))
 }

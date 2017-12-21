@@ -4,7 +4,7 @@
 package app
 
 import (
-	"github.com/mattermost/platform/model"
+	"github.com/mattermost/mattermost-server/model"
 	goi18n "github.com/nicksnyder/go-i18n/i18n"
 )
 
@@ -23,7 +23,7 @@ func (me *JoinProvider) GetTrigger() string {
 	return CMD_JOIN
 }
 
-func (me *JoinProvider) GetCommand(T goi18n.TranslateFunc) *model.Command {
+func (me *JoinProvider) GetCommand(a *App, T goi18n.TranslateFunc) *model.Command {
 	return &model.Command{
 		Trigger:          CMD_JOIN,
 		AutoComplete:     true,
@@ -33,15 +33,15 @@ func (me *JoinProvider) GetCommand(T goi18n.TranslateFunc) *model.Command {
 	}
 }
 
-func (me *JoinProvider) DoCommand(args *model.CommandArgs, message string) *model.CommandResponse {
-	if result := <-Srv.Store.Channel().GetByName(args.TeamId, message, true); result.Err != nil {
+func (me *JoinProvider) DoCommand(a *App, args *model.CommandArgs, message string) *model.CommandResponse {
+	if result := <-a.Srv.Store.Channel().GetByName(args.TeamId, message, true); result.Err != nil {
 		return &model.CommandResponse{Text: args.T("api.command_join.list.app_error"), ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
 	} else {
 		channel := result.Data.(*model.Channel)
 
 		if channel.Name == message {
 			allowed := false
-			if (channel.Type == model.CHANNEL_PRIVATE && SessionHasPermissionToChannel(args.Session, channel.Id, model.PERMISSION_READ_CHANNEL)) || channel.Type == model.CHANNEL_OPEN {
+			if (channel.Type == model.CHANNEL_PRIVATE && a.SessionHasPermissionToChannel(args.Session, channel.Id, model.PERMISSION_READ_CHANNEL)) || channel.Type == model.CHANNEL_OPEN {
 				allowed = true
 			}
 
@@ -49,11 +49,11 @@ func (me *JoinProvider) DoCommand(args *model.CommandArgs, message string) *mode
 				return &model.CommandResponse{Text: args.T("api.command_join.fail.app_error"), ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
 			}
 
-			if err := JoinChannel(channel, args.UserId); err != nil {
+			if err := a.JoinChannel(channel, args.UserId); err != nil {
 				return &model.CommandResponse{Text: args.T("api.command_join.fail.app_error"), ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
 			}
 
-			team, err := GetTeam(channel.TeamId)
+			team, err := a.GetTeam(channel.TeamId)
 			if err != nil {
 				return &model.CommandResponse{Text: args.T("api.command_join.fail.app_error"), ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
 			}

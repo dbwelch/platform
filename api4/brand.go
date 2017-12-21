@@ -7,22 +7,21 @@ import (
 	"net/http"
 
 	l4g "github.com/alecthomas/log4go"
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
-func InitBrand() {
+func (api *API) InitBrand() {
 	l4g.Debug(utils.T("api.brand.init.debug"))
 
-	BaseRoutes.Brand.Handle("/image", ApiHandlerTrustRequester(getBrandImage)).Methods("GET")
-	BaseRoutes.Brand.Handle("/image", ApiSessionRequired(uploadBrandImage)).Methods("POST")
+	api.BaseRoutes.Brand.Handle("/image", api.ApiHandlerTrustRequester(getBrandImage)).Methods("GET")
+	api.BaseRoutes.Brand.Handle("/image", api.ApiSessionRequired(uploadBrandImage)).Methods("POST")
 }
 
 func getBrandImage(c *Context, w http.ResponseWriter, r *http.Request) {
 	// No permission check required
 
-	if img, err := app.GetBrandImage(); err != nil {
+	if img, err := c.App.GetBrandImage(); err != nil {
 		w.WriteHeader(http.StatusNotFound)
 		w.Write(nil)
 	} else {
@@ -32,12 +31,12 @@ func getBrandImage(c *Context, w http.ResponseWriter, r *http.Request) {
 }
 
 func uploadBrandImage(c *Context, w http.ResponseWriter, r *http.Request) {
-	if r.ContentLength > *utils.Cfg.FileSettings.MaxFileSize {
+	if r.ContentLength > *c.App.Config().FileSettings.MaxFileSize {
 		c.Err = model.NewAppError("uploadBrandImage", "api.admin.upload_brand_image.too_large.app_error", nil, "", http.StatusRequestEntityTooLarge)
 		return
 	}
 
-	if err := r.ParseMultipartForm(*utils.Cfg.FileSettings.MaxFileSize); err != nil {
+	if err := r.ParseMultipartForm(*c.App.Config().FileSettings.MaxFileSize); err != nil {
 		c.Err = model.NewAppError("uploadBrandImage", "api.admin.upload_brand_image.parse.app_error", nil, "", http.StatusBadRequest)
 		return
 	}
@@ -55,12 +54,12 @@ func uploadBrandImage(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
+	if !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
 		c.SetPermissionError(model.PERMISSION_MANAGE_SYSTEM)
 		return
 	}
 
-	if err := app.SaveBrandImage(imageArray[0]); err != nil {
+	if err := c.App.SaveBrandImage(imageArray[0]); err != nil {
 		c.Err = err
 		return
 	}

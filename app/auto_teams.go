@@ -4,8 +4,8 @@
 package app
 
 import (
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
 type TeamEnvironment struct {
@@ -72,7 +72,7 @@ func (cfg *AutoTeamCreator) CreateTestTeams(num utils.Range) ([]*model.Team, boo
 	for i := 0; i < numTeams; i++ {
 		var err bool
 		teams[i], err = cfg.createRandomTeam()
-		if err != true {
+		if !err {
 			return teams, false
 		}
 	}

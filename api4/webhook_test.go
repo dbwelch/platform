@@ -4,27 +4,22 @@
 package api4
 
 import (
+	"bytes"
+	"net/http"
 	"testing"
 
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"github.com/stretchr/testify/assert"
+
+	"github.com/mattermost/mattermost-server/model"
 )
 
 func TestCreateIncomingWebhook(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
-	enableIncomingHooks := utils.Cfg.ServiceSettings.EnableIncomingWebhooks
-	enableAdminOnlyHooks := utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations
-	defer func() {
-		utils.Cfg.ServiceSettings.EnableIncomingWebhooks = enableIncomingHooks
-		utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations = enableAdminOnlyHooks
-		utils.SetDefaultRolesBasedOnConfig()
-	}()
-	utils.Cfg.ServiceSettings.EnableIncomingWebhooks = true
-	*utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations = true
-	utils.SetDefaultRolesBasedOnConfig()
+	th.App.UpdateConfig(func(cfg *model.Config) { cfg.ServiceSettings.EnableIncomingWebhooks = true })
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableOnlyAdminIntegrations = true })
 
 	hook := &model.IncomingWebhook{ChannelId: th.BasicChannel.Id}
 
@@ -56,32 +51,23 @@ func TestCreateIncomingWebhook(t *testing.T) {
 	_, resp = Client.CreateIncomingWebhook(hook)
 	CheckForbiddenStatus(t, resp)
 
-	*utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations = false
-	utils.SetDefaultRolesBasedOnConfig()
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableOnlyAdminIntegrations = false })
 
 	_, resp = Client.CreateIncomingWebhook(hook)
 	CheckNoError(t, resp)
 
-	utils.Cfg.ServiceSettings.EnableIncomingWebhooks = false
+	th.App.UpdateConfig(func(cfg *model.Config) { cfg.ServiceSettings.EnableIncomingWebhooks = false })
 	_, resp = Client.CreateIncomingWebhook(hook)
 	CheckNotImplementedStatus(t, resp)
 }
 
 func TestGetIncomingWebhooks(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
-	enableIncomingHooks := utils.Cfg.ServiceSettings.EnableIncomingWebhooks
-	enableAdminOnlyHooks := utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations
-	defer func() {
-		utils.Cfg.ServiceSettings.EnableIncomingWebhooks = enableIncomingHooks
-		utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations = enableAdminOnlyHooks
-		utils.SetDefaultRolesBasedOnConfig()
-	}()
-	utils.Cfg.ServiceSettings.EnableIncomingWebhooks = true
-	*utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations = true
-	utils.SetDefaultRolesBasedOnConfig()
+	th.App.UpdateConfig(func(cfg *model.Config) { cfg.ServiceSettings.EnableIncomingWebhooks = true })
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableOnlyAdminIntegrations = true })
 
 	hook := &model.IncomingWebhook{ChannelId: th.BasicChannel.Id}
 	rhook, resp := th.SystemAdminClient.CreateIncomingWebhook(hook)
@@ -132,8 +118,7 @@ func TestGetIncomingWebhooks(t *testing.T) {
 	_, resp = Client.GetIncomingWebhooks(0, 1000, "")
 	CheckForbiddenStatus(t, resp)
 
-	*utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations = false
-	utils.SetDefaultRolesBasedOnConfig()
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableOnlyAdminIntegrations = false })
 
 	_, resp = Client.GetIncomingWebhooksForTeam(th.BasicTeam.Id, 0, 1000, "")
 	CheckNoError(t, resp)
@@ -151,19 +136,11 @@ func TestGetIncomingWebhooks(t *testing.T) {
 
 func TestGetIncomingWebhook(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.SystemAdminClient
 
-	enableIncomingHooks := utils.Cfg.ServiceSettings.EnableIncomingWebhooks
-	enableAdminOnlyHooks := utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations
-	defer func() {
-		utils.Cfg.ServiceSettings.EnableIncomingWebhooks = enableIncomingHooks
-		utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations = enableAdminOnlyHooks
-		utils.SetDefaultRolesBasedOnConfig()
-	}()
-	utils.Cfg.ServiceSettings.EnableIncomingWebhooks = true
-	*utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations = true
-	utils.SetDefaultRolesBasedOnConfig()
+	th.App.UpdateConfig(func(cfg *model.Config) { cfg.ServiceSettings.EnableIncomingWebhooks = true })
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableOnlyAdminIntegrations = true })
 
 	var resp *model.Response
 	var rhook *model.IncomingWebhook
@@ -199,19 +176,11 @@ func TestGetIncomingWebhook(t *testing.T) {
 
 func TestDeleteIncomingWebhook(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.SystemAdminClient
 
-	enableIncomingHooks := utils.Cfg.ServiceSettings.EnableIncomingWebhooks
-	enableAdminOnlyHooks := utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations
-	defer func() {
-		utils.Cfg.ServiceSettings.EnableIncomingWebhooks = enableIncomingHooks
-		utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations = enableAdminOnlyHooks
-		utils.SetDefaultRolesBasedOnConfig()
-	}()
-	utils.Cfg.ServiceSettings.EnableIncomingWebhooks = true
-	*utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations = true
-	utils.SetDefaultRolesBasedOnConfig()
+	th.App.UpdateConfig(func(cfg *model.Config) { cfg.ServiceSettings.EnableIncomingWebhooks = true })
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableOnlyAdminIntegrations = true })
 
 	var resp *model.Response
 	var rhook *model.IncomingWebhook
@@ -259,19 +228,11 @@ func TestDeleteIncomingWebhook(t *testing.T) {
 
 func TestCreateOutgoingWebhook(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
-	enableOutgoingHooks := utils.Cfg.ServiceSettings.EnableOutgoingWebhooks
-	enableAdminOnlyHooks := utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations
-	defer func() {
-		utils.Cfg.ServiceSettings.EnableOutgoingWebhooks = enableOutgoingHooks
-		utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations = enableAdminOnlyHooks
-		utils.SetDefaultRolesBasedOnConfig()
-	}()
-	utils.Cfg.ServiceSettings.EnableOutgoingWebhooks = true
-	*utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations = true
-	utils.SetDefaultRolesBasedOnConfig()
+	th.App.UpdateConfig(func(cfg *model.Config) { cfg.ServiceSettings.EnableOutgoingWebhooks = true })
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableOnlyAdminIntegrations = true })
 
 	hook := &model.OutgoingWebhook{ChannelId: th.BasicChannel.Id, TeamId: th.BasicChannel.TeamId, CallbackURLs: []string{"http://nowhere.com"}}
 
@@ -299,32 +260,23 @@ func TestCreateOutgoingWebhook(t *testing.T) {
 	_, resp = Client.CreateOutgoingWebhook(hook)
 	CheckForbiddenStatus(t, resp)
 
-	*utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations = false
-	utils.SetDefaultRolesBasedOnConfig()
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableOnlyAdminIntegrations = false })
 
 	_, resp = Client.CreateOutgoingWebhook(hook)
 	CheckNoError(t, resp)
 
-	utils.Cfg.ServiceSettings.EnableOutgoingWebhooks = false
+	th.App.UpdateConfig(func(cfg *model.Config) { cfg.ServiceSettings.EnableOutgoingWebhooks = false })
 	_, resp = Client.CreateOutgoingWebhook(hook)
 	CheckNotImplementedStatus(t, resp)
 }
 
 func TestGetOutgoingWebhooks(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
-	enableOutgoingHooks := utils.Cfg.ServiceSettings.EnableOutgoingWebhooks
-	enableAdminOnlyHooks := utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations
-	defer func() {
-		utils.Cfg.ServiceSettings.EnableOutgoingWebhooks = enableOutgoingHooks
-		utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations = enableAdminOnlyHooks
-		utils.SetDefaultRolesBasedOnConfig()
-	}()
-	utils.Cfg.ServiceSettings.EnableOutgoingWebhooks = true
-	*utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations = true
-	utils.SetDefaultRolesBasedOnConfig()
+	th.App.UpdateConfig(func(cfg *model.Config) { cfg.ServiceSettings.EnableOutgoingWebhooks = true })
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableOnlyAdminIntegrations = true })
 
 	hook := &model.OutgoingWebhook{ChannelId: th.BasicChannel.Id, TeamId: th.BasicChannel.TeamId, CallbackURLs: []string{"http://nowhere.com"}}
 	rhook, resp := th.SystemAdminClient.CreateOutgoingWebhook(hook)
@@ -387,17 +339,12 @@ func TestGetOutgoingWebhooks(t *testing.T) {
 	}
 
 	hooks, resp = th.SystemAdminClient.GetOutgoingWebhooksForChannel(model.NewId(), 0, 1000, "")
-	CheckNoError(t, resp)
-
-	if len(hooks) != 0 {
-		t.Fatal("no hooks should be returned")
-	}
+	CheckForbiddenStatus(t, resp)
 
 	_, resp = Client.GetOutgoingWebhooks(0, 1000, "")
 	CheckForbiddenStatus(t, resp)
 
-	*utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations = false
-	utils.SetDefaultRolesBasedOnConfig()
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableOnlyAdminIntegrations = false })
 
 	_, resp = Client.GetOutgoingWebhooksForTeam(th.BasicTeam.Id, 0, 1000, "")
 	CheckNoError(t, resp)
@@ -421,19 +368,11 @@ func TestGetOutgoingWebhooks(t *testing.T) {
 
 func TestGetOutgoingWebhook(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
-	enableOutgoingHooks := utils.Cfg.ServiceSettings.EnableOutgoingWebhooks
-	enableAdminOnlyHooks := utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations
-	defer func() {
-		utils.Cfg.ServiceSettings.EnableOutgoingWebhooks = enableOutgoingHooks
-		utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations = enableAdminOnlyHooks
-		utils.SetDefaultRolesBasedOnConfig()
-	}()
-	utils.Cfg.ServiceSettings.EnableOutgoingWebhooks = true
-	*utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations = true
-	utils.SetDefaultRolesBasedOnConfig()
+	th.App.UpdateConfig(func(cfg *model.Config) { cfg.ServiceSettings.EnableOutgoingWebhooks = true })
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableOnlyAdminIntegrations = true })
 
 	hook := &model.OutgoingWebhook{ChannelId: th.BasicChannel.Id, TeamId: th.BasicChannel.TeamId, CallbackURLs: []string{"http://nowhere.com"}}
 
@@ -460,19 +399,11 @@ func TestGetOutgoingWebhook(t *testing.T) {
 
 func TestUpdateIncomingHook(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
-	enableIncomingHooks := utils.Cfg.ServiceSettings.EnableIncomingWebhooks
-	enableAdminOnlyHooks := utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations
-	defer func() {
-		utils.Cfg.ServiceSettings.EnableIncomingWebhooks = enableIncomingHooks
-		utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations = enableAdminOnlyHooks
-		utils.SetDefaultRolesBasedOnConfig()
-	}()
-	utils.Cfg.ServiceSettings.EnableIncomingWebhooks = true
-	*utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations = true
-	utils.SetDefaultRolesBasedOnConfig()
+	th.App.UpdateConfig(func(cfg *model.Config) { cfg.ServiceSettings.EnableIncomingWebhooks = true })
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableOnlyAdminIntegrations = true })
 
 	hook1 := &model.IncomingWebhook{ChannelId: th.BasicChannel.Id}
 
@@ -501,6 +432,9 @@ func TestUpdateIncomingHook(t *testing.T) {
 		} else {
 			t.Fatal("should not be nil")
 		}
+
+		//updatedHook, _ = th.App.GetIncomingWebhook(createdHook.Id)
+		assert.Equal(t, updatedHook.ChannelId, createdHook.ChannelId)
 	})
 
 	t.Run("RetainCreateAt", func(t *testing.T) {
@@ -552,11 +486,10 @@ func TestUpdateIncomingHook(t *testing.T) {
 		CheckForbiddenStatus(t, resp)
 	})
 
-	utils.Cfg.ServiceSettings.EnableIncomingWebhooks = true
+	th.App.UpdateConfig(func(cfg *model.Config) { cfg.ServiceSettings.EnableIncomingWebhooks = true })
 
 	t.Run("OnlyAdminIntegrationsDisabled", func(t *testing.T) {
-		*utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations = false
-		utils.SetDefaultRolesBasedOnConfig()
+		th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableOnlyAdminIntegrations = false })
 
 		t.Run("UpdateHookOfSameUser", func(t *testing.T) {
 			sameUserHook := &model.IncomingWebhook{ChannelId: th.BasicChannel.Id, UserId: th.BasicUser2.Id}
@@ -574,11 +507,10 @@ func TestUpdateIncomingHook(t *testing.T) {
 		})
 	})
 
-	*utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations = true
-	utils.SetDefaultRolesBasedOnConfig()
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableOnlyAdminIntegrations = true })
 
 	Client.Logout()
-	UpdateUserToTeamAdmin(th.BasicUser2, th.BasicTeam)
+	th.UpdateUserToTeamAdmin(th.BasicUser2, th.BasicTeam)
 	th.LoginBasic2()
 	t.Run("UpdateByDifferentUser", func(t *testing.T) {
 		updatedHook, resp := Client.UpdateIncomingWebhook(createdHook)
@@ -589,13 +521,13 @@ func TestUpdateIncomingHook(t *testing.T) {
 	})
 
 	t.Run("IncomingHooksDisabled", func(t *testing.T) {
-		utils.Cfg.ServiceSettings.EnableIncomingWebhooks = false
+		th.App.UpdateConfig(func(cfg *model.Config) { cfg.ServiceSettings.EnableIncomingWebhooks = false })
 		_, resp := Client.UpdateIncomingWebhook(createdHook)
 		CheckNotImplementedStatus(t, resp)
 		CheckErrorMessage(t, resp, "api.incoming_webhook.disabled.app_error")
 	})
 
-	utils.Cfg.ServiceSettings.EnableIncomingWebhooks = true
+	th.App.UpdateConfig(func(cfg *model.Config) { cfg.ServiceSettings.EnableIncomingWebhooks = true })
 
 	t.Run("PrivateChannel", func(t *testing.T) {
 		privateChannel := th.CreatePrivateChannel()
@@ -615,7 +547,7 @@ func TestUpdateIncomingHook(t *testing.T) {
 
 	team := th.CreateTeamWithClient(Client)
 	user := th.CreateUserWithClient(Client)
-	LinkUserToTeam(user, team)
+	th.LinkUserToTeam(user, team)
 	Client.Logout()
 	Client.Login(user.Id, user.Password)
 	t.Run("UpdateToADifferentTeam", func(t *testing.T) {
@@ -626,19 +558,11 @@ func TestUpdateIncomingHook(t *testing.T) {
 
 func TestRegenOutgoingHookToken(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
-	enableOutgoingHooks := utils.Cfg.ServiceSettings.EnableOutgoingWebhooks
-	enableAdminOnlyHooks := utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations
-	defer func() {
-		utils.Cfg.ServiceSettings.EnableOutgoingWebhooks = enableOutgoingHooks
-		utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations = enableAdminOnlyHooks
-		utils.SetDefaultRolesBasedOnConfig()
-	}()
-	utils.Cfg.ServiceSettings.EnableOutgoingWebhooks = true
-	*utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations = true
-	utils.SetDefaultRolesBasedOnConfig()
+	th.App.UpdateConfig(func(cfg *model.Config) { cfg.ServiceSettings.EnableOutgoingWebhooks = true })
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableOnlyAdminIntegrations = true })
 
 	hook := &model.OutgoingWebhook{ChannelId: th.BasicChannel.Id, TeamId: th.BasicChannel.TeamId, CallbackURLs: []string{"http://nowhere.com"}}
 	rhook, resp := th.SystemAdminClient.CreateOutgoingWebhook(hook)
@@ -660,26 +584,18 @@ func TestRegenOutgoingHookToken(t *testing.T) {
 	_, resp = Client.RegenOutgoingHookToken(rhook.Id)
 	CheckForbiddenStatus(t, resp)
 
-	utils.Cfg.ServiceSettings.EnableOutgoingWebhooks = false
+	th.App.UpdateConfig(func(cfg *model.Config) { cfg.ServiceSettings.EnableOutgoingWebhooks = false })
 	_, resp = th.SystemAdminClient.RegenOutgoingHookToken(rhook.Id)
 	CheckNotImplementedStatus(t, resp)
 }
 
 func TestUpdateOutgoingHook(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.Client
 
-	enableOutgoingHooks := utils.Cfg.ServiceSettings.EnableOutgoingWebhooks
-	enableAdminOnlyHooks := utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations
-	defer func() {
-		utils.Cfg.ServiceSettings.EnableOutgoingWebhooks = enableOutgoingHooks
-		utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations = enableAdminOnlyHooks
-		utils.SetDefaultRolesBasedOnConfig()
-	}()
-	utils.Cfg.ServiceSettings.EnableOutgoingWebhooks = true
-	*utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations = true
-	utils.SetDefaultRolesBasedOnConfig()
+	th.App.UpdateConfig(func(cfg *model.Config) { cfg.ServiceSettings.EnableOutgoingWebhooks = true })
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableOnlyAdminIntegrations = true })
 
 	createdHook := &model.OutgoingWebhook{ChannelId: th.BasicChannel.Id, TeamId: th.BasicChannel.TeamId,
 		CallbackURLs: []string{"http://nowhere.com"}, TriggerWords: []string{"cats"}}
@@ -702,12 +618,12 @@ func TestUpdateOutgoingHook(t *testing.T) {
 	})
 
 	t.Run("OutgoingHooksDisabled", func(t *testing.T) {
-		utils.Cfg.ServiceSettings.EnableOutgoingWebhooks = false
+		th.App.UpdateConfig(func(cfg *model.Config) { cfg.ServiceSettings.EnableOutgoingWebhooks = false })
 		_, resp := th.SystemAdminClient.UpdateOutgoingWebhook(createdHook)
 		CheckNotImplementedStatus(t, resp)
 	})
 
-	utils.Cfg.ServiceSettings.EnableOutgoingWebhooks = true
+	th.App.UpdateConfig(func(cfg *model.Config) { cfg.ServiceSettings.EnableOutgoingWebhooks = true })
 	t.Run("RetainCreateAt", func(t *testing.T) {
 		hook2 := &model.OutgoingWebhook{ChannelId: th.BasicChannel.Id, TeamId: th.BasicChannel.TeamId,
 			CallbackURLs: []string{"http://nowhere.com"}, TriggerWords: []string{"rats"}}
@@ -752,8 +668,7 @@ func TestUpdateOutgoingHook(t *testing.T) {
 		CheckForbiddenStatus(t, resp)
 	})
 
-	*utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations = false
-	utils.SetDefaultRolesBasedOnConfig()
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableOnlyAdminIntegrations = false })
 	hook2 := &model.OutgoingWebhook{ChannelId: th.BasicChannel.Id, TeamId: th.BasicChannel.TeamId,
 		CallbackURLs: []string{"http://nowhere.com"}, TriggerWords: []string{"rats2"}}
 
@@ -763,11 +678,10 @@ func TestUpdateOutgoingHook(t *testing.T) {
 	_, resp = Client.UpdateOutgoingWebhook(createdHook2)
 	CheckForbiddenStatus(t, resp)
 
-	*utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations = true
-	utils.SetDefaultRolesBasedOnConfig()
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableOnlyAdminIntegrations = true })
 
 	Client.Logout()
-	UpdateUserToTeamAdmin(th.BasicUser2, th.BasicTeam)
+	th.UpdateUserToTeamAdmin(th.BasicUser2, th.BasicTeam)
 	th.LoginBasic2()
 	t.Run("RetainHookCreator", func(t *testing.T) {
 		createdHook.DisplayName = "Basic user 2"
@@ -823,7 +737,7 @@ func TestUpdateOutgoingHook(t *testing.T) {
 
 	team := th.CreateTeamWithClient(Client)
 	user := th.CreateUserWithClient(Client)
-	LinkUserToTeam(user, team)
+	th.LinkUserToTeam(user, team)
 	Client.Logout()
 	Client.Login(user.Id, user.Password)
 	t.Run("UpdateToADifferentTeam", func(t *testing.T) {
@@ -834,19 +748,11 @@ func TestUpdateOutgoingHook(t *testing.T) {
 
 func TestDeleteOutgoingHook(t *testing.T) {
 	th := Setup().InitBasic().InitSystemAdmin()
-	defer TearDown()
+	defer th.TearDown()
 	Client := th.SystemAdminClient
 
-	enableIncomingHooks := utils.Cfg.ServiceSettings.EnableIncomingWebhooks
-	enableAdminOnlyHooks := utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations
-	defer func() {
-		utils.Cfg.ServiceSettings.EnableIncomingWebhooks = enableIncomingHooks
-		utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations = enableAdminOnlyHooks
-		utils.SetDefaultRolesBasedOnConfig()
-	}()
-	utils.Cfg.ServiceSettings.EnableIncomingWebhooks = true
-	*utils.Cfg.ServiceSettings.EnableOnlyAdminIntegrations = true
-	utils.SetDefaultRolesBasedOnConfig()
+	th.App.UpdateConfig(func(cfg *model.Config) { cfg.ServiceSettings.EnableIncomingWebhooks = true })
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableOnlyAdminIntegrations = true })
 
 	var resp *model.Response
 	var rhook *model.OutgoingWebhook
@@ -892,4 +798,43 @@ func TestDeleteOutgoingHook(t *testing.T) {
 		_, resp = Client.DeleteOutgoingWebhook(rhook.Id)
 		CheckForbiddenStatus(t, resp)
 	})
+}
+
+func TestCommandWebhooks(t *testing.T) {
+	th := Setup().InitBasic().InitSystemAdmin()
+	defer th.TearDown()
+
+	Client := th.SystemAdminClient
+
+	cmd := &model.Command{
+		CreatorId: th.BasicUser.Id,
+		TeamId:    th.BasicTeam.Id,
+		URL:       "http://nowhere.com",
+		Method:    model.COMMAND_METHOD_POST,
+		Trigger:   "delayed"}
+
+	cmd, _ = Client.CreateCommand(cmd)
+	args := &model.CommandArgs{
+		TeamId:    th.BasicTeam.Id,
+		UserId:    th.BasicUser.Id,
+		ChannelId: th.BasicChannel.Id,
+	}
+	hook, err := th.App.CreateCommandWebhook(cmd.Id, args)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if resp, _ := http.Post(Client.Url+"/hooks/commands/123123123123", "application/json", bytes.NewBufferString("{\"text\":\"this is a test\"}")); resp.StatusCode != http.StatusNotFound {
+		t.Fatal("expected not-found for non-existent hook")
+	}
+
+	for i := 0; i < 5; i++ {
+		if resp, err := http.Post(Client.Url+"/hooks/commands/"+hook.Id, "application/json", bytes.NewBufferString("{\"text\":\"this is a test\"}")); err != nil || resp.StatusCode != http.StatusOK {
+			t.Fatal(err)
+		}
+	}
+
+	if resp, _ := http.Post(Client.Url+"/hooks/commands/"+hook.Id, "application/json", bytes.NewBufferString("{\"text\":\"this is a test\"}")); resp.StatusCode != http.StatusBadRequest {
+		t.Fatal("expected error for sixth usage")
+	}
 }

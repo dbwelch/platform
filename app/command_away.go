@@ -4,7 +4,7 @@
 package app
 
 import (
-	"github.com/mattermost/platform/model"
+	"github.com/mattermost/mattermost-server/model"
 	goi18n "github.com/nicksnyder/go-i18n/i18n"
 )
 
@@ -23,7 +23,7 @@ func (me *AwayProvider) GetTrigger() string {
 	return CMD_AWAY
 }
 
-func (me *AwayProvider) GetCommand(T goi18n.TranslateFunc) *model.Command {
+func (me *AwayProvider) GetCommand(a *App, T goi18n.TranslateFunc) *model.Command {
 	return &model.Command{
 		Trigger:          CMD_AWAY,
 		AutoComplete:     true,
@@ -32,8 +32,8 @@ func (me *AwayProvider) GetCommand(T goi18n.TranslateFunc) *model.Command {
 	}
 }
 
-func (me *AwayProvider) DoCommand(args *model.CommandArgs, message string) *model.CommandResponse {
-	SetStatusAwayIfNeeded(args.UserId, true)
+func (me *AwayProvider) DoCommand(a *App, args *model.CommandArgs, message string) *model.CommandResponse {
+	a.SetStatusAwayIfNeeded(args.UserId, true)
 
 	return &model.CommandResponse{ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL, Text: args.T("api.command_away.success")}
 }

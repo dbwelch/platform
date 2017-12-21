@@ -8,17 +8,16 @@ import (
 
 	l4g "github.com/alecthomas/log4go"
 
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
-func InitStatus() {
+func (api *API) InitStatus() {
 	l4g.Debug(utils.T("api.status.init.debug"))
 
-	BaseRoutes.User.Handle("/status", ApiHandler(getUserStatus)).Methods("GET")
-	BaseRoutes.Users.Handle("/status/ids", ApiHandler(getUserStatusesByIds)).Methods("POST")
-	BaseRoutes.User.Handle("/status", ApiHandler(updateUserStatus)).Methods("PUT")
+	api.BaseRoutes.User.Handle("/status", api.ApiSessionRequired(getUserStatus)).Methods("GET")
+	api.BaseRoutes.Users.Handle("/status/ids", api.ApiSessionRequired(getUserStatusesByIds)).Methods("POST")
+	api.BaseRoutes.User.Handle("/status", api.ApiSessionRequired(updateUserStatus)).Methods("PUT")
 }
 
 func getUserStatus(c *Context, w http.ResponseWriter, r *http.Request) {
@@ -29,7 +28,7 @@ func getUserStatus(c *Context, w http.ResponseWriter, r *http.Request) {
 
 	// No permission check required
 
-	if statusMap, err := app.GetUserStatusesByIds([]string{c.Params.UserId}); err != nil {
+	if statusMap, err := c.App.GetUserStatusesByIds([]string{c.Params.UserId}); err != nil {
 		c.Err = err
 		return
 	} else {
@@ -52,7 +51,7 @@ func getUserStatusesByIds(c *Context, w http.ResponseWriter, r *http.Request) {
 
 	// No permission check required
 
-	if statusMap, err := app.GetUserStatusesByIds(userIds); err != nil {
+	if statusMap, err := c.App.GetUserStatusesByIds(userIds); err != nil {
 		c.Err = err
 		return
 	} else {
@@ -72,18 +71,20 @@ func updateUserStatus(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !app.SessionHasPermissionToUser(c.Session, c.Params.UserId) {
+	if !c.App.SessionHasPermissionToUser(c.Session, c.Params.UserId) {
 		c.SetPermissionError(model.PERMISSION_EDIT_OTHER_USERS)
 		return
 	}
 
 	switch status.Status {
 	case "online":
-		app.SetStatusOnline(c.Params.UserId, "", true)
+		c.App.SetStatusOnline(c.Params.UserId, "", true)
 	case "offline":
-		app.SetStatusOffline(c.Params.UserId, true)
+		c.App.SetStatusOffline(c.Params.UserId, true)
 	case "away":
-		app.SetStatusAwayIfNeeded(c.Params.UserId, true)
+		c.App.SetStatusAwayIfNeeded(c.Params.UserId, true)
+	case "dnd":
+		c.App.SetStatusDoNotDisturb(c.Params.UserId)
 	default:
 		c.SetInvalidParam("status")
 		return

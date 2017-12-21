@@ -7,8 +7,10 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -18,8 +20,10 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/viper"
 
-	"github.com/mattermost/platform/einterfaces"
-	"github.com/mattermost/platform/model"
+	"net/http"
+
+	"github.com/mattermost/mattermost-server/einterfaces"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 const (
@@ -66,16 +70,23 @@ func RemoveConfigListener(id string) {
 	delete(cfgListeners, id)
 }
 
-func FindConfigFile(fileName string) string {
-	if _, err := os.Stat("./config/" + fileName); err == nil {
-		fileName, _ = filepath.Abs("./config/" + fileName)
-	} else if _, err := os.Stat("../config/" + fileName); err == nil {
-		fileName, _ = filepath.Abs("../config/" + fileName)
-	} else if _, err := os.Stat(fileName); err == nil {
-		fileName, _ = filepath.Abs(fileName)
+// FindConfigFile attempts to find an existing configuration file. fileName can be an absolute or
+// relative path or name such as "/opt/mattermost/config.json" or simply "config.json". An empty
+// string is returned if no configuration is found.
+func FindConfigFile(fileName string) (path string) {
+	if filepath.IsAbs(fileName) {
+		if _, err := os.Stat(fileName); err == nil {
+			return fileName
+		}
+	} else {
+		for _, dir := range []string{"./config", "../config", "../../config", "."} {
+			path, _ := filepath.Abs(filepath.Join(dir, fileName))
+			if _, err := os.Stat(path); err == nil {
+				return path
+			}
+		}
 	}
-
-	return fileName
+	return ""
 }
 
 func FindDir(dir string) (string, bool) {
@@ -119,6 +130,8 @@ func ConfigureCmdLineLog() {
 	configureLog(&ls)
 }
 
+// TODO: this code initializes console and file logging. It will eventually be replaced by JSON logging in logger/logger.go
+// See PLT-3893 for more information
 func configureLog(s *model.LogSettings) {
 
 	l4g.Close()
@@ -168,7 +181,7 @@ func GetLogFileLocation(fileLocation string) string {
 		logDir, _ := FindDir("logs")
 		return logDir + LOG_FILENAME
 	} else {
-		return fileLocation + LOG_FILENAME
+		return path.Join(fileLocation, LOG_FILENAME)
 	}
 }
 
@@ -178,23 +191,17 @@ func SaveConfig(fileName string, config *model.Config) *model.AppError {
 
 	b, err := json.MarshalIndent(config, "", "    ")
 	if err != nil {
-		return model.NewLocAppError("SaveConfig", "utils.config.save_config.saving.app_error",
-			map[string]interface{}{"Filename": fileName}, err.Error())
+		return model.NewAppError("SaveConfig", "utils.config.save_config.saving.app_error",
+			map[string]interface{}{"Filename": fileName}, err.Error(), http.StatusBadRequest)
 	}
 
 	err = ioutil.WriteFile(fileName, b, 0644)
 	if err != nil {
-		return model.NewLocAppError("SaveConfig", "utils.config.save_config.saving.app_error",
-			map[string]interface{}{"Filename": fileName}, err.Error())
+		return model.NewAppError("SaveConfig", "utils.config.save_config.saving.app_error",
+			map[string]interface{}{"Filename": fileName}, err.Error(), http.StatusInternalServerError)
 	}
 
 	return nil
-}
-
-func EnableConfigFromEnviromentVars() {
-	viper.SetEnvPrefix("mm")
-	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	viper.AutomaticEnv()
 }
 
 func InitializeConfigWatch() {
@@ -223,8 +230,8 @@ func InitializeConfigWatch() {
 						if event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Create == fsnotify.Create {
 							l4g.Info(fmt.Sprintf("Config file watcher detected a change reloading %v", CfgFileName))
 
-							if configReadErr := viper.ReadInConfig(); configReadErr == nil {
-								LoadConfig(CfgFileName)
+							if _, configReadErr := ReadConfigFile(CfgFileName, true); configReadErr == nil {
+								LoadGlobalConfig(CfgFileName)
 							} else {
 								l4g.Error(fmt.Sprintf("Failed to read while watching config file at %v with err=%v", CfgFileName, configReadErr.Error()))
 							}
@@ -268,61 +275,108 @@ func InitAndLoadConfig(filename string) error {
 		return err
 	}
 
-	EnableConfigFromEnviromentVars()
-	LoadConfig(filename)
+	LoadGlobalConfig(filename)
 	InitializeConfigWatch()
 	EnableConfigWatch()
 
 	return nil
 }
 
-// LoadConfig will try to search around for the corresponding config file.
-// It will search /tmp/fileName then attempt ./config/fileName,
-// then ../config/fileName and last it will look at fileName
-func LoadConfig(fileName string) {
+// ReadConfig reads and parses the given configuration.
+func ReadConfig(r io.Reader, allowEnvironmentOverrides bool) (*model.Config, error) {
+	v := viper.New()
+
+	if allowEnvironmentOverrides {
+		v.SetEnvPrefix("mm")
+		v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+		v.AutomaticEnv()
+	}
+
+	v.SetConfigType("json")
+	if err := v.ReadConfig(r); err != nil {
+		return nil, err
+	}
+
+	var config model.Config
+	unmarshalErr := v.Unmarshal(&config)
+	if unmarshalErr == nil {
+		// https://github.com/spf13/viper/issues/324
+		// https://github.com/spf13/viper/issues/348
+		config.PluginSettings = model.PluginSettings{}
+		unmarshalErr = v.UnmarshalKey("pluginsettings", &config.PluginSettings)
+	}
+	return &config, unmarshalErr
+}
+
+// ReadConfigFile reads and parses the configuration at the given file path.
+func ReadConfigFile(path string, allowEnvironmentOverrides bool) (*model.Config, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return ReadConfig(f, allowEnvironmentOverrides)
+}
+
+// EnsureConfigFile will attempt to locate a config file with the given name. If it does not exist,
+// it will attempt to locate a default config file, and copy it to a file named fileName in the same
+// directory. In either case, the config file path is returned.
+func EnsureConfigFile(fileName string) (string, error) {
+	if configFile := FindConfigFile(fileName); configFile != "" {
+		return configFile, nil
+	}
+	if defaultPath := FindConfigFile("default.json"); defaultPath != "" {
+		destPath := filepath.Join(filepath.Dir(defaultPath), fileName)
+		src, err := os.Open(defaultPath)
+		if err != nil {
+			return "", err
+		}
+		defer src.Close()
+		dest, err := os.OpenFile(destPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
+		if err != nil {
+			return "", err
+		}
+		defer dest.Close()
+		if _, err := io.Copy(dest, src); err == nil {
+			return destPath, nil
+		}
+	}
+	return "", fmt.Errorf("no config file found")
+}
+
+// LoadGlobalConfig will try to search around for the corresponding config file.  It will search
+// /tmp/fileName then attempt ./config/fileName, then ../config/fileName and last it will look at
+// fileName
+//
+// XXX: This is deprecated.
+func LoadGlobalConfig(fileName string) *model.Config {
 	cfgMutex.Lock()
 	defer cfgMutex.Unlock()
 
 	// Cfg should never be null
 	oldConfig := *Cfg
 
-	fileNameWithExtension := filepath.Base(fileName)
-	fileExtension := filepath.Ext(fileNameWithExtension)
-	fileDir := filepath.Dir(fileName)
-
-	if len(fileNameWithExtension) > 0 {
-		fileNameOnly := fileNameWithExtension[:len(fileNameWithExtension)-len(fileExtension)]
-		viper.SetConfigName(fileNameOnly)
+	var configPath string
+	if fileName != filepath.Base(fileName) {
+		configPath = fileName
 	} else {
-		viper.SetConfigName("config")
+		if path, err := EnsureConfigFile(fileName); err != nil {
+			errMsg := T("utils.config.load_config.opening.panic", map[string]interface{}{"Filename": fileName, "Error": err.Error()})
+			fmt.Fprintln(os.Stderr, errMsg)
+			os.Exit(1)
+		} else {
+			configPath = path
+		}
 	}
 
-	if len(fileDir) > 0 {
-		viper.AddConfigPath(fileDir)
-	}
-
-	viper.SetConfigType("json")
-	viper.AddConfigPath("./config")
-	viper.AddConfigPath("../config")
-	viper.AddConfigPath("../../config")
-	viper.AddConfigPath(".")
-
-	configReadErr := viper.ReadInConfig()
-	if configReadErr != nil {
-		errMsg := T("utils.config.load_config.opening.panic", map[string]interface{}{"Filename": fileName, "Error": configReadErr.Error()})
+	config, err := ReadConfigFile(configPath, true)
+	if err != nil {
+		errMsg := T("utils.config.load_config.decoding.panic", map[string]interface{}{"Filename": fileName, "Error": err.Error()})
 		fmt.Fprintln(os.Stderr, errMsg)
 		os.Exit(1)
 	}
 
-	var config model.Config
-	unmarshalErr := viper.Unmarshal(&config)
-	if unmarshalErr != nil {
-		errMsg := T("utils.config.load_config.decoding.panic", map[string]interface{}{"Filename": fileName, "Error": unmarshalErr.Error()})
-		fmt.Fprintln(os.Stderr, errMsg)
-		os.Exit(1)
-	}
-
-	CfgFileName = viper.ConfigFileUsed()
+	CfgFileName = configPath
 
 	needSave := len(config.SqlSettings.AtRestEncryptKey) == 0 || len(*config.FileSettings.PublicLinkSalt) == 0 ||
 		len(config.EmailSettings.InviteSalt) == 0
@@ -335,51 +389,47 @@ func LoadConfig(fileName string) {
 
 	if needSave {
 		cfgMutex.Unlock()
-		if err := SaveConfig(CfgFileName, &config); err != nil {
+		if err := SaveConfig(CfgFileName, config); err != nil {
 			err.Translate(T)
 			l4g.Warn(err.Error())
 		}
 		cfgMutex.Lock()
 	}
 
-	if err := ValidateLocales(&config); err != nil {
-		panic(T(err.Id))
-	}
-
-	if err := ValidateLdapFilter(&config); err != nil {
-		panic(T(err.Id))
+	if err := ValidateLocales(config); err != nil {
+		cfgMutex.Unlock()
+		if err := SaveConfig(CfgFileName, config); err != nil {
+			err.Translate(T)
+			l4g.Warn(err.Error())
+		}
+		cfgMutex.Lock()
 	}
 
 	configureLog(&config.LogSettings)
 
-	if config.FileSettings.DriverName == model.IMAGE_DRIVER_LOCAL {
+	if *config.FileSettings.DriverName == model.IMAGE_DRIVER_LOCAL {
 		dir := config.FileSettings.Directory
 		if len(dir) > 0 && dir[len(dir)-1:] != "/" {
 			config.FileSettings.Directory += "/"
 		}
 	}
 
-	Cfg = &config
+	Cfg = config
 	CfgHash = fmt.Sprintf("%x", md5.Sum([]byte(Cfg.ToJson())))
 	ClientCfg = getClientConfig(Cfg)
 	clientCfgJson, _ := json.Marshal(ClientCfg)
 	ClientCfgHash = fmt.Sprintf("%x", md5.Sum(clientCfgJson))
 
-	// Actions that need to run every time the config is loaded
-	if ldapI := einterfaces.GetLdapInterface(); ldapI != nil {
-		// This restarts the job if nessisary (works for config reloads)
-		ldapI.StartLdapSyncJob()
-	}
-
-	if samlI := einterfaces.GetSamlInterface(); samlI != nil {
-		samlI.ConfigureSP()
-	}
-
-	SetDefaultRolesBasedOnConfig()
 	SetSiteURL(*Cfg.ServiceSettings.SiteURL)
 
+	InvokeGlobalConfigListeners(&oldConfig, config)
+
+	return config
+}
+
+func InvokeGlobalConfigListeners(old, current *model.Config) {
 	for _, listener := range cfgListeners {
-		listener(&oldConfig, &config)
+		listener(old, current)
 	}
 }
 
@@ -411,7 +461,16 @@ func getClientConfig(c *model.Config) map[string]string {
 	props["RestrictPublicChannelDeletion"] = *c.TeamSettings.RestrictPublicChannelDeletion
 	props["RestrictPrivateChannelDeletion"] = *c.TeamSettings.RestrictPrivateChannelDeletion
 	props["RestrictPrivateChannelManageMembers"] = *c.TeamSettings.RestrictPrivateChannelManageMembers
+	props["EnableXToLeaveChannelsFromLHS"] = strconv.FormatBool(*c.TeamSettings.EnableXToLeaveChannelsFromLHS)
 	props["TeammateNameDisplay"] = *c.TeamSettings.TeammateNameDisplay
+	props["DefaultTeamName"] = *c.TeamSettings.DefaultTeamName
+
+	props["AndroidLatestVersion"] = c.ClientRequirements.AndroidLatestVersion
+	props["AndroidMinVersion"] = c.ClientRequirements.AndroidMinVersion
+	props["DesktopLatestVersion"] = c.ClientRequirements.DesktopLatestVersion
+	props["DesktopMinVersion"] = c.ClientRequirements.DesktopMinVersion
+	props["IosLatestVersion"] = c.ClientRequirements.IosLatestVersion
+	props["IosMinVersion"] = c.ClientRequirements.IosMinVersion
 
 	props["EnableOAuthServiceProvider"] = strconv.FormatBool(c.ServiceSettings.EnableOAuthServiceProvider)
 	props["GoogleDeveloperKey"] = c.ServiceSettings.GoogleDeveloperKey
@@ -429,6 +488,9 @@ func getClientConfig(c *model.Config) map[string]string {
 	props["RestrictPostDelete"] = *c.ServiceSettings.RestrictPostDelete
 	props["AllowEditPost"] = *c.ServiceSettings.AllowEditPost
 	props["PostEditTimeLimit"] = fmt.Sprintf("%v", *c.ServiceSettings.PostEditTimeLimit)
+	props["CloseUnusedDirectMessages"] = strconv.FormatBool(*c.ServiceSettings.CloseUnusedDirectMessages)
+	props["EnablePreviewFeatures"] = strconv.FormatBool(*c.ServiceSettings.EnablePreviewFeatures)
+	props["EnableTutorial"] = strconv.FormatBool(*c.ServiceSettings.EnableTutorial)
 
 	props["SendEmailNotifications"] = strconv.FormatBool(c.EmailSettings.SendEmailNotifications)
 	props["SendPushNotifications"] = strconv.FormatBool(*c.EmailSettings.SendPushNotifications)
@@ -437,6 +499,7 @@ func getClientConfig(c *model.Config) map[string]string {
 	props["EnableSignInWithUsername"] = strconv.FormatBool(*c.EmailSettings.EnableSignInWithUsername)
 	props["RequireEmailVerification"] = strconv.FormatBool(c.EmailSettings.RequireEmailVerification)
 	props["EnableEmailBatching"] = strconv.FormatBool(*c.EmailSettings.EnableEmailBatching)
+	props["EmailNotificationContentsType"] = *c.EmailSettings.EmailNotificationContentsType
 
 	props["EnableSignUpWithGitLab"] = strconv.FormatBool(c.GitLabSettings.Enable)
 
@@ -447,9 +510,6 @@ func getClientConfig(c *model.Config) map[string]string {
 	props["AboutLink"] = *c.SupportSettings.AboutLink
 	props["HelpLink"] = *c.SupportSettings.HelpLink
 	props["ReportAProblemLink"] = *c.SupportSettings.ReportAProblemLink
-	props["AdministratorsGuideLink"] = *c.SupportSettings.AdministratorsGuideLink
-	props["TroubleshootingForumLink"] = *c.SupportSettings.TroubleshootingForumLink
-	props["CommercialSupportLink"] = *c.SupportSettings.CommercialSupportLink
 	props["SupportEmail"] = *c.SupportSettings.SupportEmail
 
 	props["EnableFileAttachments"] = strconv.FormatBool(*c.FileSettings.EnableFileAttachments)
@@ -462,13 +522,12 @@ func getClientConfig(c *model.Config) map[string]string {
 
 	props["DefaultClientLocale"] = *c.LocalizationSettings.DefaultClientLocale
 	props["AvailableLocales"] = *c.LocalizationSettings.AvailableLocales
-	props["SQLDriverName"] = c.SqlSettings.DriverName
+	props["SQLDriverName"] = *c.SqlSettings.DriverName
 
 	props["EnableCustomEmoji"] = strconv.FormatBool(*c.ServiceSettings.EnableCustomEmoji)
 	props["EnableEmojiPicker"] = strconv.FormatBool(*c.ServiceSettings.EnableEmojiPicker)
 	props["RestrictCustomEmojiCreation"] = *c.ServiceSettings.RestrictCustomEmojiCreation
 	props["MaxFileSize"] = strconv.FormatInt(*c.FileSettings.MaxFileSize, 10)
-
 	props["AppDownloadLink"] = *c.NativeAppSettings.AppDownloadLink
 	props["AndroidAppDownloadLink"] = *c.NativeAppSettings.AndroidAppDownloadLink
 	props["IosAppDownloadLink"] = *c.NativeAppSettings.IosAppDownloadLink
@@ -476,6 +535,7 @@ func getClientConfig(c *model.Config) map[string]string {
 	props["EnableWebrtc"] = strconv.FormatBool(*c.WebrtcSettings.Enable)
 
 	props["MaxNotificationsPerChannel"] = strconv.FormatInt(*c.TeamSettings.MaxNotificationsPerChannel, 10)
+	props["EnableConfirmNotificationsToChannel"] = strconv.FormatBool(*c.TeamSettings.EnableConfirmNotificationsToChannel)
 	props["TimeBetweenUserTypingUpdatesMilliseconds"] = strconv.FormatInt(*c.ServiceSettings.TimeBetweenUserTypingUpdatesMilliseconds, 10)
 	props["EnableUserTypingMessages"] = strconv.FormatBool(*c.ServiceSettings.EnableUserTypingMessages)
 	props["EnableChannelViewedMessages"] = strconv.FormatBool(*c.ServiceSettings.EnableChannelViewedMessages)
@@ -483,7 +543,13 @@ func getClientConfig(c *model.Config) map[string]string {
 	props["DiagnosticId"] = CfgDiagnosticId
 	props["DiagnosticsEnabled"] = strconv.FormatBool(*c.LogSettings.EnableDiagnostics)
 
-	if IsLicensed {
+	props["PluginsEnabled"] = strconv.FormatBool(*c.PluginSettings.Enable)
+
+	if IsLicensed() {
+		License := License()
+		props["ExperimentalTownSquareIsReadOnly"] = strconv.FormatBool(*c.TeamSettings.ExperimentalTownSquareIsReadOnly)
+		props["ExperimentalEnableAuthenticationTransfer"] = strconv.FormatBool(*c.ServiceSettings.ExperimentalEnableAuthenticationTransfer)
+
 		if *License.Features.CustomBrand {
 			props["EnableCustomBrand"] = strconv.FormatBool(*c.TeamSettings.EnableCustomBrand)
 			props["CustomBrandText"] = *c.TeamSettings.CustomBrandText
@@ -493,9 +559,9 @@ func getClientConfig(c *model.Config) map[string]string {
 		if *License.Features.LDAP {
 			props["EnableLdap"] = strconv.FormatBool(*c.LdapSettings.Enable)
 			props["LdapLoginFieldName"] = *c.LdapSettings.LoginFieldName
-			props["NicknameAttributeSet"] = strconv.FormatBool(*c.LdapSettings.NicknameAttribute != "")
-			props["FirstNameAttributeSet"] = strconv.FormatBool(*c.LdapSettings.FirstNameAttribute != "")
-			props["LastNameAttributeSet"] = strconv.FormatBool(*c.LdapSettings.LastNameAttribute != "")
+			props["LdapNicknameAttributeSet"] = strconv.FormatBool(*c.LdapSettings.NicknameAttribute != "")
+			props["LdapFirstNameAttributeSet"] = strconv.FormatBool(*c.LdapSettings.FirstNameAttribute != "")
+			props["LdapLastNameAttributeSet"] = strconv.FormatBool(*c.LdapSettings.LastNameAttribute != "")
 		}
 
 		if *License.Features.MFA {
@@ -510,9 +576,9 @@ func getClientConfig(c *model.Config) map[string]string {
 		if *License.Features.SAML {
 			props["EnableSaml"] = strconv.FormatBool(*c.SamlSettings.Enable)
 			props["SamlLoginButtonText"] = *c.SamlSettings.LoginButtonText
-			props["FirstNameAttributeSet"] = strconv.FormatBool(*c.SamlSettings.FirstNameAttribute != "")
-			props["LastNameAttributeSet"] = strconv.FormatBool(*c.SamlSettings.LastNameAttribute != "")
-			props["NicknameAttributeSet"] = strconv.FormatBool(*c.SamlSettings.NicknameAttribute != "")
+			props["SamlFirstNameAttributeSet"] = strconv.FormatBool(*c.SamlSettings.FirstNameAttribute != "")
+			props["SamlLastNameAttributeSet"] = strconv.FormatBool(*c.SamlSettings.LastNameAttribute != "")
+			props["SamlNicknameAttributeSet"] = strconv.FormatBool(*c.SamlSettings.NicknameAttribute != "")
 		}
 
 		if *License.Features.Cluster {
@@ -546,15 +612,28 @@ func getClientConfig(c *model.Config) map[string]string {
 			props["BannerTextColor"] = *c.AnnouncementSettings.BannerTextColor
 			props["AllowBannerDismissal"] = strconv.FormatBool(*c.AnnouncementSettings.AllowBannerDismissal)
 		}
+
+		if *License.Features.ThemeManagement {
+			props["EnableThemeSelection"] = strconv.FormatBool(*c.ThemeSettings.EnableThemeSelection)
+			props["DefaultTheme"] = *c.ThemeSettings.DefaultTheme
+			props["AllowCustomThemes"] = strconv.FormatBool(*c.ThemeSettings.AllowCustomThemes)
+			props["AllowedThemes"] = strings.Join(c.ThemeSettings.AllowedThemes, ",")
+		}
+
+		if *License.Features.DataRetention {
+			props["DataRetentionEnableMessageDeletion"] = strconv.FormatBool(*c.DataRetentionSettings.EnableMessageDeletion)
+			props["DataRetentionMessageRetentionDays"] = strconv.FormatInt(int64(*c.DataRetentionSettings.MessageRetentionDays), 10)
+			props["DataRetentionEnableFileDeletion"] = strconv.FormatBool(*c.DataRetentionSettings.EnableFileDeletion)
+			props["DataRetentionFileRetentionDays"] = strconv.FormatInt(int64(*c.DataRetentionSettings.FileRetentionDays), 10)
+		}
 	}
 
 	return props
 }
 
-func ValidateLdapFilter(cfg *model.Config) *model.AppError {
-	ldapInterface := einterfaces.GetLdapInterface()
-	if *cfg.LdapSettings.Enable && ldapInterface != nil && *cfg.LdapSettings.UserFilter != "" {
-		if err := ldapInterface.ValidateFilter(*cfg.LdapSettings.UserFilter); err != nil {
+func ValidateLdapFilter(cfg *model.Config, ldap einterfaces.LdapInterface) *model.AppError {
+	if *cfg.LdapSettings.Enable && ldap != nil && *cfg.LdapSettings.UserFilter != "" {
+		if err := ldap.ValidateFilter(*cfg.LdapSettings.UserFilter); err != nil {
 			return err
 		}
 	}
@@ -562,26 +641,44 @@ func ValidateLdapFilter(cfg *model.Config) *model.AppError {
 }
 
 func ValidateLocales(cfg *model.Config) *model.AppError {
+	var err *model.AppError
 	locales := GetSupportedLocales()
 	if _, ok := locales[*cfg.LocalizationSettings.DefaultServerLocale]; !ok {
-		return model.NewLocAppError("ValidateLocales", "utils.config.supported_server_locale.app_error", nil, "")
+		*cfg.LocalizationSettings.DefaultServerLocale = model.DEFAULT_LOCALE
+		err = model.NewAppError("ValidateLocales", "utils.config.supported_server_locale.app_error", nil, "", http.StatusBadRequest)
 	}
 
 	if _, ok := locales[*cfg.LocalizationSettings.DefaultClientLocale]; !ok {
-		return model.NewLocAppError("ValidateLocales", "utils.config.supported_client_locale.app_error", nil, "")
+		*cfg.LocalizationSettings.DefaultClientLocale = model.DEFAULT_LOCALE
+		err = model.NewAppError("ValidateLocales", "utils.config.supported_client_locale.app_error", nil, "", http.StatusBadRequest)
 	}
 
 	if len(*cfg.LocalizationSettings.AvailableLocales) > 0 {
+		isDefaultClientLocaleInAvailableLocales := false
 		for _, word := range strings.Split(*cfg.LocalizationSettings.AvailableLocales, ",") {
+			if _, ok := locales[word]; !ok {
+				*cfg.LocalizationSettings.AvailableLocales = ""
+				isDefaultClientLocaleInAvailableLocales = true
+				err = model.NewAppError("ValidateLocales", "utils.config.supported_available_locales.app_error", nil, "", http.StatusBadRequest)
+				break
+			}
+
 			if word == *cfg.LocalizationSettings.DefaultClientLocale {
-				return nil
+				isDefaultClientLocaleInAvailableLocales = true
 			}
 		}
 
-		return model.NewLocAppError("ValidateLocales", "utils.config.validate_locale.app_error", nil, "")
+		availableLocales := *cfg.LocalizationSettings.AvailableLocales
+
+		if !isDefaultClientLocaleInAvailableLocales {
+			availableLocales += "," + *cfg.LocalizationSettings.DefaultClientLocale
+			err = model.NewAppError("ValidateLocales", "utils.config.add_client_locale.app_error", nil, "", http.StatusBadRequest)
+		}
+
+		*cfg.LocalizationSettings.AvailableLocales = strings.Join(RemoveDuplicatesFromStringArray(strings.Split(availableLocales, ",")), ",")
 	}
 
-	return nil
+	return err
 }
 
 func Desanitize(cfg *model.Config) {
@@ -607,8 +704,8 @@ func Desanitize(cfg *model.Config) {
 		cfg.GitLabSettings.Secret = Cfg.GitLabSettings.Secret
 	}
 
-	if cfg.SqlSettings.DataSource == model.FAKE_SETTING {
-		cfg.SqlSettings.DataSource = Cfg.SqlSettings.DataSource
+	if *cfg.SqlSettings.DataSource == model.FAKE_SETTING {
+		*cfg.SqlSettings.DataSource = *Cfg.SqlSettings.DataSource
 	}
 	if cfg.SqlSettings.AtRestEncryptKey == model.FAKE_SETTING {
 		cfg.SqlSettings.AtRestEncryptKey = Cfg.SqlSettings.AtRestEncryptKey

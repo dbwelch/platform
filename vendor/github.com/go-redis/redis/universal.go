@@ -17,11 +17,10 @@ type UniversalOptions struct {
 	// Only single-node and failover clients.
 	DB int
 
-	// Enables read only queries on slave nodes.
-	// Only cluster and single-node clients.
-	ReadOnly bool
-
 	// Only cluster clients.
+
+	// Enables read only queries on slave nodes.
+	ReadOnly bool
 
 	MaxRedirects   int
 	RouteByLatency bool
@@ -91,9 +90,8 @@ func (o *UniversalOptions) simple() *Options {
 	}
 
 	return &Options{
-		Addr:     addr,
-		DB:       o.DB,
-		ReadOnly: o.ReadOnly,
+		Addr: addr,
+		DB:   o.DB,
 
 		MaxRetries:         o.MaxRetries,
 		Password:           o.Password,
@@ -118,6 +116,9 @@ type UniversalClient interface {
 	Process(cmd Cmder) error
 	Close() error
 }
+
+var _ UniversalClient = (*Client)(nil)
+var _ UniversalClient = (*ClusterClient)(nil)
 
 // NewUniversalClient returns a new multi client. The type of client returned depends
 // on the following three conditions:

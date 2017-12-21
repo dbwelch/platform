@@ -6,25 +6,28 @@ package wsapi
 import (
 	l4g "github.com/alecthomas/log4go"
 
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"net/http"
+
+	"github.com/mattermost/mattermost-server/app"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
-func ApiWebSocketHandler(wh func(*model.WebSocketRequest) (map[string]interface{}, *model.AppError)) webSocketHandler {
-	return webSocketHandler{wh}
+func (api *API) ApiWebSocketHandler(wh func(*model.WebSocketRequest) (map[string]interface{}, *model.AppError)) webSocketHandler {
+	return webSocketHandler{api.App, wh}
 }
 
 type webSocketHandler struct {
+	app         *app.App
 	handlerFunc func(*model.WebSocketRequest) (map[string]interface{}, *model.AppError)
 }
 
 func (wh webSocketHandler) ServeWebSocket(conn *app.WebConn, r *model.WebSocketRequest) {
-	l4g.Debug("/api/v3/users/websocket:%s", r.Action)
+	l4g.Debug("websocket: %s", r.Action)
 
-	session, sessionErr := app.GetSession(conn.SessionToken)
+	session, sessionErr := wh.app.GetSession(conn.GetSessionToken())
 	if sessionErr != nil {
-		l4g.Error(utils.T("api.web_socket_handler.log.error"), "/api/v3/users/websocket", r.Action, r.Seq, conn.UserId, sessionErr.SystemMessage(utils.T), sessionErr.Error())
+		l4g.Error(utils.T("api.web_socket_handler.log.error"), "websocket", r.Action, r.Seq, conn.UserId, sessionErr.SystemMessage(utils.T), sessionErr.Error())
 		sessionErr.DetailedError = ""
 		errResp := model.NewWebSocketError(r.Seq, sessionErr)
 
@@ -40,7 +43,7 @@ func (wh webSocketHandler) ServeWebSocket(conn *app.WebConn, r *model.WebSocketR
 	var err *model.AppError
 
 	if data, err = wh.handlerFunc(r); err != nil {
-		l4g.Error(utils.T("api.web_socket_handler.log.error"), "/api/v3/users/websocket", r.Action, r.Seq, r.Session.UserId, err.SystemMessage(utils.T), err.DetailedError)
+		l4g.Error(utils.T("api.web_socket_handler.log.error"), "websocket", r.Action, r.Seq, r.Session.UserId, err.SystemMessage(utils.T), err.DetailedError)
 		err.DetailedError = ""
 		errResp := model.NewWebSocketError(r.Seq, err)
 
@@ -54,5 +57,5 @@ func (wh webSocketHandler) ServeWebSocket(conn *app.WebConn, r *model.WebSocketR
 }
 
 func NewInvalidWebSocketParamError(action string, name string) *model.AppError {
-	return model.NewLocAppError("/api/v3/users/websocket:"+action, "api.websocket_handler.invalid_param.app_error", map[string]interface{}{"Name": name}, "")
+	return model.NewAppError("websocket: "+action, "api.websocket_handler.invalid_param.app_error", map[string]interface{}{"Name": name}, "", http.StatusBadRequest)
 }

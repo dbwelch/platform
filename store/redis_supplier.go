@@ -12,7 +12,7 @@ import (
 
 	l4g "github.com/alecthomas/log4go"
 	"github.com/go-redis/redis"
-	"github.com/mattermost/platform/model"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 const REDIS_EXPIRY_TIME = 30 * time.Minute
@@ -34,11 +34,7 @@ func GetBytes(key interface{}) ([]byte, error) {
 
 func DecodeBytes(input []byte, thing interface{}) error {
 	dec := gob.NewDecoder(bytes.NewReader(input))
-	err := dec.Decode(thing)
-	if err != nil {
-		return err
-	}
-	return nil
+	return dec.Decode(thing)
 }
 
 func NewRedisSupplier() *RedisSupplier {
@@ -130,4 +126,9 @@ func (s *RedisSupplier) ReactionGetForPost(ctx context.Context, postId string, h
 func (s *RedisSupplier) ReactionDeleteAllWithEmojiName(ctx context.Context, emojiName string, hints ...LayeredStoreHint) *LayeredStoreSupplierResult {
 	// Ignoring this. It's probably OK to have the emoji slowly expire from Redis.
 	return s.Next().ReactionDeleteAllWithEmojiName(ctx, emojiName, hints...)
+}
+
+func (s *RedisSupplier) ReactionPermanentDeleteBatch(ctx context.Context, endTime int64, limit int64, hints ...LayeredStoreHint) *LayeredStoreSupplierResult {
+	// Ignoring this. It's probably OK to have the emoji slowly expire from Redis.
+	return s.Next().ReactionPermanentDeleteBatch(ctx, endTime, limit, hints...)
 }

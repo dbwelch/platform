@@ -6,67 +6,65 @@ package app
 import (
 	"strings"
 
-	"github.com/mattermost/platform/einterfaces"
-	"github.com/mattermost/platform/model"
+	"github.com/mattermost/mattermost-server/model"
 )
 
-func RegisterAllClusterMessageHandlers() {
-	einterfaces.GetClusterInterface().RegisterClusterMessageHandler(model.CLUSTER_EVENT_PUBLISH, ClusterPublishHandler)
-	einterfaces.GetClusterInterface().RegisterClusterMessageHandler(model.CLUSTER_EVENT_UPDATE_STATUS, ClusterUpdateStatusHandler)
-	einterfaces.GetClusterInterface().RegisterClusterMessageHandler(model.CLUSTER_EVENT_INVALIDATE_ALL_CACHES, ClusterInvalidateAllCachesHandler)
-	einterfaces.GetClusterInterface().RegisterClusterMessageHandler(model.CLUSTER_EVENT_INVALIDATE_CACHE_FOR_WEBHOOK, ClusterInvalidateCacheForWebhookHandler)
-	einterfaces.GetClusterInterface().RegisterClusterMessageHandler(model.CLUSTER_EVENT_INVALIDATE_CACHE_FOR_CHANNEL_POSTS, ClusterInvalidateCacheForChannelPostsHandler)
-	einterfaces.GetClusterInterface().RegisterClusterMessageHandler(model.CLUSTER_EVENT_INVALIDATE_CACHE_FOR_CHANNEL_MEMBERS_NOTIFY_PROPS, ClusterInvalidateCacheForChannelMembersNotifyPropHandler)
-	einterfaces.GetClusterInterface().RegisterClusterMessageHandler(model.CLUSTER_EVENT_INVALIDATE_CACHE_FOR_CHANNEL_MEMBERS, ClusterInvalidateCacheForChannelMembersHandler)
-	einterfaces.GetClusterInterface().RegisterClusterMessageHandler(model.CLUSTER_EVENT_INVALIDATE_CACHE_FOR_CHANNEL_BY_NAME, ClusterInvalidateCacheForChannelByNameHandler)
-	einterfaces.GetClusterInterface().RegisterClusterMessageHandler(model.CLUSTER_EVENT_INVALIDATE_CACHE_FOR_CHANNEL, ClusterInvalidateCacheForChannelHandler)
-	einterfaces.GetClusterInterface().RegisterClusterMessageHandler(model.CLUSTER_EVENT_INVALIDATE_CACHE_FOR_USER, ClusterInvalidateCacheForUserHandler)
-	einterfaces.GetClusterInterface().RegisterClusterMessageHandler(model.CLUSTER_EVENT_CLEAR_SESSION_CACHE_FOR_USER, ClusterClearSessionCacheForUserHandler)
-
+func (a *App) RegisterAllClusterMessageHandlers() {
+	a.Cluster.RegisterClusterMessageHandler(model.CLUSTER_EVENT_PUBLISH, a.ClusterPublishHandler)
+	a.Cluster.RegisterClusterMessageHandler(model.CLUSTER_EVENT_UPDATE_STATUS, a.ClusterUpdateStatusHandler)
+	a.Cluster.RegisterClusterMessageHandler(model.CLUSTER_EVENT_INVALIDATE_ALL_CACHES, a.ClusterInvalidateAllCachesHandler)
+	a.Cluster.RegisterClusterMessageHandler(model.CLUSTER_EVENT_INVALIDATE_CACHE_FOR_WEBHOOK, a.ClusterInvalidateCacheForWebhookHandler)
+	a.Cluster.RegisterClusterMessageHandler(model.CLUSTER_EVENT_INVALIDATE_CACHE_FOR_CHANNEL_POSTS, a.ClusterInvalidateCacheForChannelPostsHandler)
+	a.Cluster.RegisterClusterMessageHandler(model.CLUSTER_EVENT_INVALIDATE_CACHE_FOR_CHANNEL_MEMBERS_NOTIFY_PROPS, a.ClusterInvalidateCacheForChannelMembersNotifyPropHandler)
+	a.Cluster.RegisterClusterMessageHandler(model.CLUSTER_EVENT_INVALIDATE_CACHE_FOR_CHANNEL_MEMBERS, a.ClusterInvalidateCacheForChannelMembersHandler)
+	a.Cluster.RegisterClusterMessageHandler(model.CLUSTER_EVENT_INVALIDATE_CACHE_FOR_CHANNEL_BY_NAME, a.ClusterInvalidateCacheForChannelByNameHandler)
+	a.Cluster.RegisterClusterMessageHandler(model.CLUSTER_EVENT_INVALIDATE_CACHE_FOR_CHANNEL, a.ClusterInvalidateCacheForChannelHandler)
+	a.Cluster.RegisterClusterMessageHandler(model.CLUSTER_EVENT_INVALIDATE_CACHE_FOR_USER, a.ClusterInvalidateCacheForUserHandler)
+	a.Cluster.RegisterClusterMessageHandler(model.CLUSTER_EVENT_CLEAR_SESSION_CACHE_FOR_USER, a.ClusterClearSessionCacheForUserHandler)
 }
 
-func ClusterPublishHandler(msg *model.ClusterMessage) {
+func (a *App) ClusterPublishHandler(msg *model.ClusterMessage) {
 	event := model.WebSocketEventFromJson(strings.NewReader(msg.Data))
-	PublishSkipClusterSend(event)
+	a.PublishSkipClusterSend(event)
 }
 
-func ClusterUpdateStatusHandler(msg *model.ClusterMessage) {
+func (a *App) ClusterUpdateStatusHandler(msg *model.ClusterMessage) {
 	status := model.StatusFromJson(strings.NewReader(msg.Data))
-	AddStatusCacheSkipClusterSend(status)
+	a.AddStatusCacheSkipClusterSend(status)
 }
 
-func ClusterInvalidateAllCachesHandler(msg *model.ClusterMessage) {
-	InvalidateAllCachesSkipSend()
+func (a *App) ClusterInvalidateAllCachesHandler(msg *model.ClusterMessage) {
+	a.InvalidateAllCachesSkipSend()
 }
 
-func ClusterInvalidateCacheForWebhookHandler(msg *model.ClusterMessage) {
-	InvalidateCacheForWebhookSkipClusterSend(msg.Data)
+func (a *App) ClusterInvalidateCacheForWebhookHandler(msg *model.ClusterMessage) {
+	a.InvalidateCacheForWebhookSkipClusterSend(msg.Data)
 }
 
-func ClusterInvalidateCacheForChannelPostsHandler(msg *model.ClusterMessage) {
-	InvalidateCacheForChannelPostsSkipClusterSend(msg.Data)
+func (a *App) ClusterInvalidateCacheForChannelPostsHandler(msg *model.ClusterMessage) {
+	a.InvalidateCacheForChannelPostsSkipClusterSend(msg.Data)
 }
 
-func ClusterInvalidateCacheForChannelMembersNotifyPropHandler(msg *model.ClusterMessage) {
-	InvalidateCacheForChannelMembersNotifyPropsSkipClusterSend(msg.Data)
+func (a *App) ClusterInvalidateCacheForChannelMembersNotifyPropHandler(msg *model.ClusterMessage) {
+	a.InvalidateCacheForChannelMembersNotifyPropsSkipClusterSend(msg.Data)
 }
 
-func ClusterInvalidateCacheForChannelMembersHandler(msg *model.ClusterMessage) {
-	InvalidateCacheForChannelMembersSkipClusterSend(msg.Data)
+func (a *App) ClusterInvalidateCacheForChannelMembersHandler(msg *model.ClusterMessage) {
+	a.InvalidateCacheForChannelMembersSkipClusterSend(msg.Data)
 }
 
-func ClusterInvalidateCacheForChannelByNameHandler(msg *model.ClusterMessage) {
-	InvalidateCacheForChannelByNameSkipClusterSend(msg.Props["id"], msg.Props["name"])
+func (a *App) ClusterInvalidateCacheForChannelByNameHandler(msg *model.ClusterMessage) {
+	a.InvalidateCacheForChannelByNameSkipClusterSend(msg.Props["id"], msg.Props["name"])
 }
 
-func ClusterInvalidateCacheForChannelHandler(msg *model.ClusterMessage) {
-	InvalidateCacheForChannelSkipClusterSend(msg.Data)
+func (a *App) ClusterInvalidateCacheForChannelHandler(msg *model.ClusterMessage) {
+	a.InvalidateCacheForChannelSkipClusterSend(msg.Data)
 }
 
-func ClusterInvalidateCacheForUserHandler(msg *model.ClusterMessage) {
-	InvalidateCacheForUserSkipClusterSend(msg.Data)
+func (a *App) ClusterInvalidateCacheForUserHandler(msg *model.ClusterMessage) {
+	a.InvalidateCacheForUserSkipClusterSend(msg.Data)
 }
 
-func ClusterClearSessionCacheForUserHandler(msg *model.ClusterMessage) {
-	ClearSessionCacheForUserSkipClusterSend(msg.Data)
+func (a *App) ClusterClearSessionCacheForUserHandler(msg *model.ClusterMessage) {
+	a.ClearSessionCacheForUserSkipClusterSend(msg.Data)
 }

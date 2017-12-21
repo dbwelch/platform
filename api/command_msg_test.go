@@ -4,19 +4,22 @@
 package api
 
 import (
-	"github.com/mattermost/platform/model"
 	"strings"
 	"testing"
+
+	"github.com/mattermost/mattermost-server/model"
 )
 
 func TestMsgCommands(t *testing.T) {
 	th := Setup().InitBasic()
+	defer th.TearDown()
+
 	Client := th.BasicClient
 	team := th.BasicTeam
 	user1 := th.BasicUser
 	user2 := th.BasicUser2
 	user3 := th.CreateUser(th.BasicClient)
-	LinkUserToTeam(user3, team)
+	th.LinkUserToTeam(user3, team)
 
 	Client.Must(Client.CreateDirectChannel(user2.Id))
 	Client.Must(Client.CreateDirectChannel(user3.Id))

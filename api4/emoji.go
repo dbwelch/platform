@@ -9,35 +9,34 @@ import (
 
 	l4g "github.com/alecthomas/log4go"
 
-	"github.com/mattermost/platform/app"
-	"github.com/mattermost/platform/einterfaces"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
+	"github.com/mattermost/mattermost-server/app"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
-func InitEmoji() {
+func (api *API) InitEmoji() {
 	l4g.Debug(utils.T("api.emoji.init.debug"))
 
-	BaseRoutes.Emojis.Handle("", ApiSessionRequired(createEmoji)).Methods("POST")
-	BaseRoutes.Emojis.Handle("", ApiSessionRequired(getEmojiList)).Methods("GET")
-	BaseRoutes.Emoji.Handle("", ApiSessionRequired(deleteEmoji)).Methods("DELETE")
-	BaseRoutes.Emoji.Handle("", ApiSessionRequired(getEmoji)).Methods("GET")
-	BaseRoutes.Emoji.Handle("/image", ApiSessionRequiredTrustRequester(getEmojiImage)).Methods("GET")
+	api.BaseRoutes.Emojis.Handle("", api.ApiSessionRequired(createEmoji)).Methods("POST")
+	api.BaseRoutes.Emojis.Handle("", api.ApiSessionRequired(getEmojiList)).Methods("GET")
+	api.BaseRoutes.Emoji.Handle("", api.ApiSessionRequired(deleteEmoji)).Methods("DELETE")
+	api.BaseRoutes.Emoji.Handle("", api.ApiSessionRequired(getEmoji)).Methods("GET")
+	api.BaseRoutes.Emoji.Handle("/image", api.ApiSessionRequiredTrustRequester(getEmojiImage)).Methods("GET")
 }
 
 func createEmoji(c *Context, w http.ResponseWriter, r *http.Request) {
-	if !*utils.Cfg.ServiceSettings.EnableCustomEmoji {
+	if !*c.App.Config().ServiceSettings.EnableCustomEmoji {
 		c.Err = model.NewAppError("createEmoji", "api.emoji.disabled.app_error", nil, "", http.StatusNotImplemented)
 		return
 	}
 
-	if emojiInterface := einterfaces.GetEmojiInterface(); emojiInterface != nil &&
+	if emojiInterface := c.App.Emoji; emojiInterface != nil &&
 		!emojiInterface.CanUserCreateEmoji(c.Session.Roles, c.Session.TeamMembers) {
 		c.Err = model.NewAppError("getEmoji", "api.emoji.disabled.app_error", nil, "user_id="+c.Session.UserId, http.StatusUnauthorized)
 		return
 	}
 
-	if len(utils.Cfg.FileSettings.DriverName) == 0 {
+	if len(*c.App.Config().FileSettings.DriverName) == 0 {
 		c.Err = model.NewAppError("createEmoji", "api.emoji.storage.app_error", nil, "", http.StatusNotImplemented)
 		return
 	}
@@ -66,7 +65,7 @@ func createEmoji(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	newEmoji, err := app.CreateEmoji(c.Session.UserId, emoji, m)
+	newEmoji, err := c.App.CreateEmoji(c.Session.UserId, emoji, m)
 	if err != nil {
 		c.Err = err
 		return
@@ -76,12 +75,12 @@ func createEmoji(c *Context, w http.ResponseWriter, r *http.Request) {
 }
 
 func getEmojiList(c *Context, w http.ResponseWriter, r *http.Request) {
-	if !*utils.Cfg.ServiceSettings.EnableCustomEmoji {
+	if !*c.App.Config().ServiceSettings.EnableCustomEmoji {
 		c.Err = model.NewAppError("getEmoji", "api.emoji.disabled.app_error", nil, "", http.StatusNotImplemented)
 		return
 	}
 
-	listEmoji, err := app.GetEmojiList(c.Params.Page, c.Params.PerPage)
+	listEmoji, err := c.App.GetEmojiList(c.Params.Page, c.Params.PerPage)
 	if err != nil {
 		c.Err = err
 		return
@@ -96,18 +95,18 @@ func deleteEmoji(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	emoji, err := app.GetEmoji(c.Params.EmojiId)
+	emoji, err := c.App.GetEmoji(c.Params.EmojiId)
 	if err != nil {
 		c.Err = err
 		return
 	}
 
-	if c.Session.UserId != emoji.CreatorId && !app.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
+	if c.Session.UserId != emoji.CreatorId && !c.App.SessionHasPermissionTo(c.Session, model.PERMISSION_MANAGE_SYSTEM) {
 		c.Err = model.NewAppError("deleteImage", "api.emoji.delete.permissions.app_error", nil, "user_id="+c.Session.UserId, http.StatusUnauthorized)
 		return
 	}
 
-	err = app.DeleteEmoji(emoji)
+	err = c.App.DeleteEmoji(emoji)
 	if err != nil {
 		c.Err = err
 		return
@@ -122,12 +121,12 @@ func getEmoji(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !*utils.Cfg.ServiceSettings.EnableCustomEmoji {
+	if !*c.App.Config().ServiceSettings.EnableCustomEmoji {
 		c.Err = model.NewAppError("getEmoji", "api.emoji.disabled.app_error", nil, "", http.StatusNotImplemented)
 		return
 	}
 
-	emoji, err := app.GetEmoji(c.Params.EmojiId)
+	emoji, err := c.App.GetEmoji(c.Params.EmojiId)
 	if err != nil {
 		c.Err = err
 		return
@@ -142,17 +141,17 @@ func getEmojiImage(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !*utils.Cfg.ServiceSettings.EnableCustomEmoji {
+	if !*c.App.Config().ServiceSettings.EnableCustomEmoji {
 		c.Err = model.NewAppError("getEmojiImage", "api.emoji.disabled.app_error", nil, "", http.StatusNotImplemented)
 		return
 	}
 
-	if len(utils.Cfg.FileSettings.DriverName) == 0 {
+	if len(*c.App.Config().FileSettings.DriverName) == 0 {
 		c.Err = model.NewAppError("getEmojiImage", "api.emoji.storage.app_error", nil, "", http.StatusNotImplemented)
 		return
 	}
 
-	image, imageType, err := app.GetEmojiImage(c.Params.EmojiId)
+	image, imageType, err := c.App.GetEmojiImage(c.Params.EmojiId)
 	if err != nil {
 		c.Err = err
 		return

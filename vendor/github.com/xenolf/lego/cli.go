@@ -32,7 +32,7 @@ func main() {
 	app.Name = "lego"
 	app.Usage = "Let's Encrypt client written in Go"
 
-	version := "0.4.0"
+	version := "0.4.1"
 	if strings.HasPrefix(gittag, "v") {
 		version = gittag
 	}
@@ -109,7 +109,7 @@ func main() {
 	app.Flags = []cli.Flag{
 		cli.StringSliceFlag{
 			Name:  "domains, d",
-			Usage: "Add domains to the process",
+			Usage: "Add a domain to the process. Can be specified multiple times.",
 		},
 		cli.StringFlag{
 			Name:  "csr, c",
@@ -221,6 +221,7 @@ Here is an example bash command using the CloudFlare DNS provider:
 	fmt.Fprintln(w, "\tovh:\tOVH_ENDPOINT, OVH_APPLICATION_KEY, OVH_APPLICATION_SECRET, OVH_CONSUMER_KEY")
 	fmt.Fprintln(w, "\tpdns:\tPDNS_API_KEY, PDNS_API_URL")
 	fmt.Fprintln(w, "\tdnspod:\tDNSPOD_API_KEY")
+	fmt.Fprintln(w, "\totc:\tOTC_USER_NAME, OTC_PASSWORD, OTC_PROJECT_NAME, OTC_DOMAIN_NAME, OTC_IDENTITY_ENDPOINT")
 	w.Flush()
 
 	fmt.Println(`
